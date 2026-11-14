@@ -1,0 +1,30 @@
+:root {
+  /* AURELIA palette */
+  --midnight: #080817;
+  --cosmic: #21183d;
+  --nebula: #7563b5;
+  --lavender: #b8a6e8;
+  --silver: #d8d9e0;
+  --white: #f5f4fa;
+
+  --bg-panel: rgba(33, 24, 61, 0.55);
+  --bg-panel-solid: #181233;
+  --border: rgba(184, 166, 232, 0.22);
+  --border-strong: rgba(184, 166, 232, 0.5);
+  --glow: 0 0 18px rgba(117, 99, 181, 0.35);
+
+  --ok: #8fd6b0;
+  --warn: #f0c674;
+  --bad: #ef8a9a;
+
+  --font-brand: "Cinzel", "Times New Roman", serif;
+  --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  --radius: 10px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 16px;
+  --space-4: 24px;
+  --space-5: 40px;
+}

@@ -1,0 +1,292 @@
+/* Mission-control HUD styling used by the headquarters dashboard */
+
+.hud {
+  position: relative;
+  background:
+    linear-gradient(180deg, rgba(117, 99, 181, 0.1), transparent 40%),
+    var(--bg-panel);
+  border-color: rgba(184, 166, 232, 0.18);
+  border-radius: 4px;
+}
+/* Corner brackets */
+.hud::before,
+.hud::after {
+  content: "";
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  pointer-events: none;
+  border: 0 solid var(--lavender);
+  opacity: 0.8;
+}
+.hud::before {
+  top: -1px;
+  left: -1px;
+  border-top-width: 2px;
+  border-left-width: 2px;
+}
+.hud::after {
+  bottom: -1px;
+  right: -1px;
+  border-bottom-width: 2px;
+  border-right-width: 2px;
+}
+.hud > h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.hud > h3::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  background: var(--lavender);
+  transform: rotate(45deg);
+}
+
+/* Header */
+.hq-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+.hq-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  color: var(--silver);
+}
+.led {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 8px var(--ok);
+  animation: pulse 2.4s ease-in-out infinite;
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.4;
+  }
+}
+.clock {
+  color: var(--lavender);
+}
+.btn[aria-pressed="true"] {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+/* Demo data is always visually distinct from saved data */
+.panel.demo {
+  border: 1px dashed var(--warn);
+  background:
+    repeating-linear-gradient(135deg, rgba(240, 198, 116, 0.05) 0 10px, transparent 10px 20px),
+    var(--bg-panel);
+}
+.panel.demo::before,
+.panel.demo::after {
+  border-color: var(--warn);
+}
+.demo-badge {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  padding: 2px 8px;
+  border: 1px solid var(--warn);
+  color: var(--warn);
+  border-radius: 3px;
+}
+.demo-note {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+/* Earth–Moon view */
+.globe-panel {
+  padding: 0;
+  overflow: hidden;
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
+  background: radial-gradient(ellipse at 50% 45%, rgba(33, 24, 61, 0.7), rgba(8, 8, 23, 0.9));
+}
+.globe {
+  flex: 1;
+  min-height: 260px;
+}
+.globe-caption {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 14px;
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  border-top: 1px solid var(--border);
+}
+
+/* Season timeline */
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  position: relative;
+}
+.timeline::before {
+  content: "";
+  position: absolute;
+  top: 6px;
+  left: 12%;
+  right: 12%;
+  height: 1px;
+  background: var(--border-strong);
+}
+.timeline li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  text-align: center;
+  color: rgba(216, 217, 224, 0.5);
+  font-size: 0.72rem;
+}
+.timeline .node {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--midnight);
+  border: 2px solid var(--border-strong);
+  z-index: 1;
+}
+.timeline li.done .node {
+  background: var(--nebula);
+  border-color: var(--nebula);
+}
+.timeline li.current {
+  color: var(--white);
+}
+.timeline li.current .node {
+  border-color: var(--lavender);
+  box-shadow: 0 0 12px var(--lavender);
+  background: var(--lavender);
+}
+.t-num {
+  letter-spacing: 0.12em;
+  margin-top: 4px;
+}
+.goals {
+  margin-top: 12px;
+}
+.goals li {
+  font-size: 0.82rem;
+  padding: 5px 0;
+  justify-content: flex-start;
+}
+
+/* Budget donut */
+.budget-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+.donut {
+  width: 170px;
+  flex-shrink: 0;
+}
+.donut-top {
+  fill: var(--white);
+  font: 500 11px var(--font-mono);
+}
+.donut-bottom {
+  fill: rgba(216, 217, 224, 0.6);
+  font: 400 6px var(--font-mono);
+  letter-spacing: 0.15em;
+}
+.legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1 1 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 0.82rem;
+}
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.legend .lg-name {
+  flex: 1;
+}
+.swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* Mission rows and nav cards */
+.row-btn {
+  appearance: none;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  width: 100%;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px 0;
+}
+.row-btn:hover .mr-top span:first-child,
+.row-btn[aria-current="true"] {
+  color: var(--lavender);
+}
+.mission-row {
+  display: block !important;
+}
+.mr-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.briefing {
+  grid-template-columns: 260px 1fr;
+  align-items: start;
+}
+.briefing li .row-btn {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+@media (max-width: 800px) {
+  .briefing {
+    grid-template-columns: 1fr;
+  }
+}
+.nav-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+.nc-title {
+  font-family: var(--font-brand);
+  letter-spacing: 0.08em;
+  color: var(--silver);
+}

@@ -14,6 +14,7 @@ class Client {
   errors: string[] = [];
   chat: string[] = [];
   role: RoleId | null = null;
+  token = "";
 
   constructor(private port: number, readonly name: string) {}
 
@@ -22,6 +23,7 @@ class Client {
     this.ws.on("message", (raw) => {
       const m = JSON.parse(String(raw)) as ServerMsg;
       if (m.t === "welcome") this.id = m.id;
+      if (m.t === "seat") this.token = m.token;
       if (m.t === "room") this.room = m.room;
       if (m.t === "flight") {
         this.flight = m.flight;
@@ -153,5 +155,44 @@ describe("cooperative multiplayer over real WebSockets", () => {
     x.ws.send(JSON.stringify({ t: "design", design: {} }));
     await until(() => x.errors.length > 1, 5000, "second error");
     x.close();
+  });
+
+  it("a player who drops after the mission starts keeps their seat and gets it back", async () => {
+    const a = new Client(server.port, "Host");
+    const b = new Client(server.port, "Drop");
+    await a.open();
+    await b.open();
+    a.send({ t: "create", name: a.name, sandbox: false });
+    await until(() => !!a.room, 5000, "room");
+    const code = a.room!.code;
+    b.send({ t: "join", code, name: b.name });
+    await until(() => !!b.token, 5000, "seat token");
+    a.send({ t: "role", role: "aerospace" });
+    b.send({ t: "role", role: "propulsion" });
+    await until(() => a.room!.players.every((p) => p.role !== null), 5000, "roles");
+    a.send({ t: "start" });
+    await until(() => a.room!.phase === "hangar", 5000, "hangar");
+
+    const token = b.token;
+    b.close();
+    await until(() => a.room!.players.some((p) => p.name === "Drop" && !p.connected), 5000, "player marked away");
+    // The seat and role are kept, and the AI crew covers the role meanwhile.
+    expect(a.room!.players.find((p) => p.name === "Drop")!.role).toBe("propulsion");
+    expect(a.room!.aiRoles).toContain("propulsion");
+
+    const b2 = new Client(server.port, "Drop");
+    await b2.open();
+    b2.send({ t: "rejoin", code, token });
+    await until(() => !!b2.room && b2.room.players.some((p) => p.id === b2.id && p.connected), 5000, "seat reclaimed");
+    expect(b2.room!.players.find((p) => p.id === b2.id)!.role).toBe("propulsion");
+    expect(a.room!.aiRoles).not.toContain("propulsion");
+
+    // A wrong token gets nothing.
+    const thief = new Client(server.port, "Thief");
+    await thief.open();
+    thief.send({ t: "rejoin", code, token: "0".repeat(32) });
+    await until(() => thief.errors.length > 0, 5000, "rejection");
+    expect(thief.room).toBeNull();
+    for (const x of [a, b2, thief]) x.close();
   });
 });

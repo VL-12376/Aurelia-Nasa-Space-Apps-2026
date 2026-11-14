@@ -22,6 +22,13 @@ npm run build      # typecheck and production build
 - **Multiplayer**: up to four people create or join a room with a 4-letter code and claim a role each. Unclaimed roles are played by AI. See [docs/multiplayer-architecture.md](docs/multiplayer-architecture.md).
 - **Sound**: all music and effects are generated live in the browser (Web Audio), so there are no audio files and no licensing issues. Volume and mute are in Settings, and the speaker button bottom-left.
 
+## Publishing
+
+- **The game** is published to GitHub Pages automatically on every push to `main` (see `.github/workflows/deploy.yml`). Change the code, push, and the public link updates in about a minute.
+- **The multiplayer server** is a separate Node program. `render.yaml` describes it for Render's free tier: create a Blueprint from this repo, wait for it to go live, then in GitHub open Settings, Secrets and variables, Actions, Variables and add `SERVER_URL` set to the server's address with `wss://` (for example `wss://aurelia-server.onrender.com`). The next push (or a manual run of the workflow) builds the public game with that address. The server redeploys itself on each push too.
+- Free hosts put an idle server to sleep, so the first connection after a quiet spell can take up to a minute.
+- Optional: set `ALLOWED_ORIGINS` on the server to your Pages address so only your copy of the game can connect.
+
 ## Tech
 
 Vite, TypeScript, Three.js (background, solar system, hangar, flight view), GSAP (transitions), Node `ws` (multiplayer server). Single-player progress is saved in `localStorage`.

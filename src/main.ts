@@ -12,6 +12,7 @@ import "./styles/fx.css";
 
 import { router } from "./core/router";
 import { startNetFlow } from "./net/flow";
+import { mp } from "./net/session";
 import { installFx } from "./ui/fx";
 import { audio, installAudio, type Mood } from "./audio/engine";
 import { CosmicBackground } from "./scene/background";
@@ -58,6 +59,7 @@ router.register("debrief", debriefScreen);
 
 router.navigate("menu");
 startNetFlow();
+void mp.resume();
 installAudio();
 installFx();
 router.onNavigate((id) => {

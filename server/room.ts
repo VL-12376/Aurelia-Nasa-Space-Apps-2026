@@ -20,11 +20,15 @@ interface Player {
   role: RoleId | null;
   ready: boolean;
   connected: boolean;
+  /** Secret that lets this player reclaim their seat after a dropped connection. */
+  token: string;
 }
 
 const HUMAN_DECISION_MS = 45_000;
 const AI_DECISION_MS = 2_500;
 const SNAPSHOT_MS = 100;
+/** A room whose players have all disconnected is closed after this long. */
+const ABANDONED_MS = 10 * 60_000;
 
 /** Re-adds every part through the normal rules. Anything the rules reject makes the design invalid. */
 export function validateDesign(design: Design, researched: string[]): string | null {
@@ -80,26 +84,63 @@ export class Room {
 
   /* ---------- membership ---------- */
 
-  addPlayer(id: string, name: string): string | null {
+  addPlayer(id: string, name: string, token = ""): string | null {
     if (this.players.length >= MAX_PLAYERS) return "This room is full (4 players).";
     if (this.phase !== "lobby") return "This mission has already started. Ask the host to set up a new room.";
     const clean = name.trim().slice(0, 20) || `Player ${this.players.length + 1}`;
-    this.players.push({ id, name: clean, role: null, ready: false, connected: true });
+    this.players.push({ id, name: clean, role: null, ready: false, connected: true, token });
     if (!this.hostId) this.hostId = id;
     this.sync();
     return null;
   }
 
+  /** Explicit leave: the seat is freed at once. */
   removePlayer(id: string): void {
     const gone = this.players.find((p) => p.id === id);
     this.players = this.players.filter((p) => p.id !== id);
-    if (this.hostId === id) this.hostId = this.players[0]?.id ?? "";
+    if (this.hostId === id) this.hostId = this.players.find((p) => p.connected)?.id ?? this.players[0]?.id ?? "";
     if (gone) this.say(null, false, `${gone.name} left the room.`);
     this.sync();
   }
 
+  /**
+   * The connection dropped. Before the mission starts the seat is simply freed. After it starts the
+   * seat is kept, the AI crew covers the role, and the player can come back with their token.
+   */
+  disconnect(id: string): void {
+    const p = this.players.find((x) => x.id === id);
+    if (!p) return;
+    if (this.phase === "lobby") return this.removePlayer(id);
+    p.connected = false;
+    if (this.hostId === id) this.hostId = this.players.find((x) => x.connected)?.id ?? this.hostId;
+    this.say(null, false, `${p.name} lost connection. The AI crew covers ${p.role ? ROLE_BY_ID[p.role].title : "their seat"} until they return.`);
+    this.sync();
+  }
+
+  /** Gives a returning player their seat back on a new connection. */
+  reattach(token: string, newId: string): Player | null {
+    if (!token) return null;
+    const p = this.players.find((x) => x.token === token);
+    if (!p) return null;
+    const wasHost = this.hostId === p.id;
+    p.id = newId;
+    p.connected = true;
+    if (wasHost || !this.players.some((x) => x.connected && x.id === this.hostId)) this.hostId = newId;
+    this.say(null, false, `${p.name} is back.`);
+    this.sync();
+    return p;
+  }
+
   get empty(): boolean {
-    return this.players.length === 0;
+    return this.players.length === 0 || this.abandonedMs > ABANDONED_MS;
+  }
+
+  private abandonedMs = 0;
+
+  /** The player who answers for a role right now, or nothing if they are away (the AI covers). */
+  private liveHuman(role: RoleId): Player | undefined {
+    const p = this.human(role);
+    return p?.connected ? p : undefined;
   }
 
   private human(role: RoleId): Player | undefined {
@@ -107,12 +148,12 @@ export class Room {
   }
 
   aiRoles(): RoleId[] {
-    return ROLES.filter((r) => !this.human(r.id)).map((r) => r.id);
+    return ROLES.filter((r) => !this.liveHuman(r.id)).map((r) => r.id);
   }
 
   /** A player may act for their own role, or for an AI-run role if they are the host. */
   private actsFor(p: Player, role: RoleId): boolean {
-    return p.role === role || (!this.human(role) && p.id === this.hostId);
+    return p.role === role || (!this.liveHuman(role) && p.id === this.hostId);
   }
 
   private researched(): string[] {
@@ -305,6 +346,7 @@ export class Room {
   /** Advance the room by dtMs of real time. Called by the server clock. */
   tick(dtMs: number): void {
     this.now += dtMs;
+    this.abandonedMs = this.players.length > 0 && this.players.every((p) => !p.connected) ? this.abandonedMs + dtMs : 0;
     const f = this.flight;
     if (this.phase !== "flight" || !f) return;
     if (f.status === "decision") {
@@ -327,7 +369,7 @@ export class Room {
     const owner = roleForEvent(pending.eventId);
     if (key !== this.decisionKey) {
       this.decisionKey = key;
-      const human = this.human(owner);
+      const human = this.liveHuman(owner);
       this.decisionDeadline = this.now + (human ? HUMAN_DECISION_MS : AI_DECISION_MS);
       this.say(owner, !human, human ? `${pending.title}. ${human.name}, this one is yours.` : `${pending.title}. I've got this one.`, human?.name);
       this.pushFlight(true);
@@ -335,7 +377,7 @@ export class Room {
     }
     if (this.now >= this.decisionDeadline) {
       const r = aiDecide(pending, f);
-      const human = this.human(owner);
+      const human = this.liveHuman(owner);
       this.say(owner, true, human ? `${crewName(owner)} is covering for ${human.name}, who did not answer in time. ${r.line}` : r.line);
       f.decide(r.option);
       this.afterStep();
@@ -388,7 +430,7 @@ export class Room {
       missionId: f.mission.id,
       design: f.design,
       telemetry: f.telemetry(),
-      pending: pending && owner ? { ...pending, owner, ownerIsAi: !this.human(owner), secondsLeft: Math.max(0, Math.round((this.decisionDeadline - this.now) / 1000)) } : null,
+      pending: pending && owner ? { ...pending, owner, ownerIsAi: !this.liveHuman(owner), secondsLeft: Math.max(0, Math.round((this.decisionDeadline - this.now) / 1000)) } : null,
       log: f.log.slice(-14),
       logLength: f.log.length,
       timeline: f.timeline(),

@@ -30,7 +30,7 @@ export function gameShell(active: ScreenId, content: HTMLElement, opts: { fill?:
   const me = shared ? mp.role : store.get().game?.role ?? null;
   const roleDef = me && me !== "all" ? ROLE_BY_ID[me] : null;
   const chip = shared
-    ? h("span", { class: "room-chip mono", title: "Shared mission session" }, `ROOM ${mp.room!.code}`, roleDef ? h("img", { src: roleDef.portrait, alt: "" }) : null, roleDef ? roleDef.title : "")
+    ? h("span", { class: `room-chip mono${mp.status === "reconnecting" ? " warn" : ""}`, title: "Shared mission session" }, mp.status === "reconnecting" ? "RECONNECTING…" : `ROOM ${mp.room!.code}`, roleDef ? h("img", { src: roleDef.portrait, alt: "" }) : null, roleDef ? roleDef.title : "")
     : roleDef
       ? h("span", { class: "room-chip mono", title: "Your role" }, h("img", { src: roleDef.portrait, alt: "" }), roleDef.title)
       : null;

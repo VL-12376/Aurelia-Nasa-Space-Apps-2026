@@ -8,6 +8,9 @@ import { Room } from "./room";
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ";
 const TICK_MS = 50;
 const MAX_MESSAGE_BYTES = 64 * 1024;
+const MAX_ROOMS = 200;
+/** Comma-separated list of page origins allowed to connect. Empty means anyone. */
+const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 
 interface Conn {
   id: string;
@@ -15,6 +18,7 @@ interface Conn {
   room: Room | null;
   tokens: number;
   alive: boolean;
+  token: string;
 }
 
 export interface RunningServer {
@@ -36,7 +40,7 @@ export function startServer(port = DEFAULT_PORT, host = "0.0.0.0"): Promise<Runn
 
   const http: Server = createServer((req, res) => {
     if (req.url === "/health") {
-      res.writeHead(200, { "content-type": "application/json" });
+      res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*" });
       res.end(JSON.stringify({ ok: true, rooms: rooms.size, players: conns.size }));
       return;
     }
@@ -67,8 +71,22 @@ export function startServer(port = DEFAULT_PORT, host = "0.0.0.0"): Promise<Runn
     if (room.empty) rooms.delete(room.code);
   };
 
-  wss.on("connection", (ws) => {
-    const c: Conn = { id: randomBytes(6).toString("hex"), ws, room: null, tokens: 40, alive: true };
+  const issueSeat = (c: Conn, room: Room, name: string): string | null => {
+    const token = randomBytes(16).toString("hex");
+    const err = room.addPlayer(c.id, name, token);
+    if (err) return err;
+    c.room = room;
+    c.token = token;
+    send(c.id, { t: "seat", code: room.code, token });
+    return null;
+  };
+
+  wss.on("connection", (ws, req) => {
+    if (allowedOrigins.length && !allowedOrigins.includes(String(req.headers.origin ?? ""))) {
+      ws.close(1008, "Origin not allowed");
+      return;
+    }
+    const c: Conn = { id: randomBytes(6).toString("hex"), ws, room: null, tokens: 40, alive: true, token: "" };
     conns.set(c.id, c);
     send(c.id, { t: "welcome", id: c.id });
     ws.on("pong", () => (c.alive = true));
@@ -85,20 +103,33 @@ export function startServer(port = DEFAULT_PORT, host = "0.0.0.0"): Promise<Runn
       switch (msg.t) {
         case "create": {
           if (c.room) leave(c);
+          if (rooms.size >= MAX_ROOMS) return send(c.id, { t: "error", message: "The server is busy. Try again in a few minutes." });
           const room = new Room(newCode(), !!msg.sandbox, transport);
           rooms.set(room.code, room);
-          const err = room.addPlayer(c.id, String(msg.name ?? ""));
-          if (err) return send(c.id, { t: "error", message: err });
-          c.room = room;
+          const err = issueSeat(c, room, String(msg.name ?? ""));
+          if (err) {
+            rooms.delete(room.code);
+            return send(c.id, { t: "error", message: err });
+          }
           return;
         }
         case "join": {
           if (c.room) leave(c);
           const room = rooms.get(String(msg.code ?? "").trim().toUpperCase());
           if (!room) return send(c.id, { t: "error", message: "No room with that code." });
-          const err = room.addPlayer(c.id, String(msg.name ?? ""));
+          const err = issueSeat(c, room, String(msg.name ?? ""));
           if (err) return send(c.id, { t: "error", message: err });
+          return;
+        }
+        case "rejoin": {
+          if (c.room) return;
+          const room = rooms.get(String(msg.code ?? "").trim().toUpperCase());
+          const p = room?.reattach(String(msg.token ?? ""), c.id);
+          if (!room || !p) return send(c.id, { t: "error", message: "That seat is no longer available." });
+          // A stale connection that still holds the seat is dropped.
+          for (const other of conns.values()) if (other !== c && other.token === msg.token) other.room = null;
           c.room = room;
+          c.token = String(msg.token);
           return;
         }
         case "leave":
@@ -110,8 +141,13 @@ export function startServer(port = DEFAULT_PORT, host = "0.0.0.0"): Promise<Runn
       }
     });
     ws.on("close", () => {
-      leave(c);
+      const room = c.room;
+      c.room = null;
       conns.delete(c.id);
+      if (room) {
+        room.disconnect(c.id);
+        if (room.empty) rooms.delete(room.code);
+      }
     });
   });
 
@@ -121,7 +157,10 @@ export function startServer(port = DEFAULT_PORT, host = "0.0.0.0"): Promise<Runn
     const dt = now - last;
     last = now;
     for (const c of conns.values()) c.tokens = Math.min(40, c.tokens + dt / 50);
-    for (const room of rooms.values()) room.tick(dt);
+    for (const room of rooms.values()) {
+      room.tick(dt);
+      if (room.empty) rooms.delete(room.code);
+    }
   }, TICK_MS);
 
   const keepAlive = setInterval(() => {

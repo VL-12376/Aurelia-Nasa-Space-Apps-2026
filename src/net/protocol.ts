@@ -26,7 +26,8 @@ export type ClientMsg =
   | { t: "launch"; craftId: string }
   | { t: "time"; mode: "pause" | "auto" | number }
   | { t: "decide"; option: string }
-  | { t: "toHangar" };
+  | { t: "toHangar" }
+  | { t: "rejoin"; code: string; token: string };
 
 export interface PlayerView {
   id: string;
@@ -71,6 +72,7 @@ export interface FlightSnapshot {
 
 export type ServerMsg =
   | { t: "welcome"; id: string }
+  | { t: "seat"; code: string; token: string }
   | { t: "room"; room: RoomView }
   | { t: "flight"; flight: FlightSnapshot }
   | { t: "chat"; from: string; role: RoleId | null; ai: boolean; text: string; at: number }

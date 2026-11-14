@@ -18,8 +18,10 @@ export const TECHS: readonly TechDef[] = [
   { id: "guidance", name: "Inertial Guidance", description: "Gyros and star trackers for navigation.", season: 2, cost: 50, requires: ["comms-uhf"], unlocks: ["Navigation instruments"] },
   { id: "landing-legs", name: "Powered Descent", description: "Throttle control and landing gear for airless worlds.", season: 2, cost: 70, requires: ["staging", "guidance"], unlocks: ["Landing systems"] },
   { id: "science-suite", name: "Science Instrument Suite", description: "Spectrometers, cameras and sensors.", season: 2, cost: 60, requires: ["comms-uhf"], unlocks: ["Scientific payloads"] },
+  { id: "heavy-lift", name: "Heavy-Lift Boosters", description: "Large clustered boosters for deep-space missions.", season: 2, cost: 90, requires: ["staging"], unlocks: ["Goliath-1 engine"] },
   { id: "heat-shield", name: "Ablative Heat Shields", description: "Survive atmospheric entry.", season: 3, cost: 90, requires: ["basic-structures", "landing-legs"], unlocks: ["Heat protection"] },
   { id: "deep-space-comms", name: "Deep Space Network", description: "High-gain antennas for long-delay links.", season: 3, cost: 100, requires: ["guidance"], unlocks: ["High-gain antennas"] },
   { id: "ion-drive", name: "Electric Propulsion", description: "Very efficient, low-thrust ion engines.", season: 4, cost: 140, requires: ["solar-power", "liquid-engines"], unlocks: ["Ion engines"] },
+  { id: "cryogenic", name: "Advanced Cryogenic Stages", description: "Lighter tanks and higher-efficiency upper-stage engines.", season: 4, cost: 130, requires: ["heavy-lift"], unlocks: ["Tank XXL-5", "Vesper-X engine"] },
   { id: "nuclear-electric", name: "Nuclear-Electric Power", description: "Power far from the Sun.", season: 4, cost: 180, requires: ["ion-drive", "deep-space-comms"], unlocks: ["Nuclear power units"] },
 ];

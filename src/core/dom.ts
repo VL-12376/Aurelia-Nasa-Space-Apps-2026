@@ -27,6 +27,11 @@ export function h<K extends keyof HTMLElementTagNameMap>(
   return el;
 }
 
+/** Like replaceChildren, but skips null, undefined and false so conditional children read naturally. */
+export function fill(el: Element, ...children: Child[]): void {
+  el.replaceChildren(...children.filter((c): c is Node | string | number => c !== null && c !== undefined && c !== false).map((c) => (c instanceof Node ? c : String(c))));
+}
+
 export function toast(message: string): void {
   let host = document.getElementById("toasts");
   if (!host) {

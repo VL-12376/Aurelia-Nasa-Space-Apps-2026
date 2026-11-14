@@ -1,44 +1,18 @@
-import { ANNUAL_BUDGET_USD, defaultAllocation, type Allocation } from "../budget/budget";
+import { GAME_VERSION, newGameState, type GameMode, type GameState } from "./gameState";
+import type { RoleChoice } from "../crew/roles";
 
-export type GameMode = "single" | "multiplayer";
+export type { ActiveMission, ActiveResearch, FlightReport, GameMode, GameState } from "./gameState";
+export { newGameState } from "./gameState";
 
 export interface Settings {
   reducedMotion: boolean;
   starDensity: "low" | "medium" | "high";
-}
-
-export interface ActiveMission {
-  missionId: string;
-  craftName: string;
-  phase: string;
   /** 0 to 1 */
-  progress: number;
-  status: "nominal" | "caution";
-}
-
-export interface ActiveResearch {
-  techId: string;
-  /** Research points invested so far. */
-  progress: number;
-}
-
-export interface GameState {
-  version: number;
-  mode: GameMode;
-  agencyName: string;
-  season: number;
-  year: number;
-  funds: number;
-  annualBudget: number;
-  allocation: Allocation;
-  reputation: number;
-  researchPoints: number;
-  researchedTech: string[];
-  activeResearch: ActiveResearch | null;
-  activeMissions: ActiveMission[];
-  completedMissions: string[];
-  achievements: string[];
-  experience: number;
+  musicVolume: number;
+  sfxVolume: number;
+  muted: boolean;
+  playerName: string;
+  serverUrl: string;
 }
 
 export interface AppState {
@@ -48,32 +22,15 @@ export interface AppState {
 
 const SAVE_KEY = "aurelia.save.v1";
 const SETTINGS_KEY = "aurelia.settings.v1";
-const GAME_VERSION = 1;
-
-export function newGameState(mode: GameMode, season = 1): GameState {
-  return {
-    version: GAME_VERSION,
-    mode,
-    agencyName: "AURELIA",
-    season,
-    year: 1,
-    funds: ANNUAL_BUDGET_USD,
-    annualBudget: ANNUAL_BUDGET_USD,
-    allocation: defaultAllocation(),
-    reputation: 10,
-    researchPoints: 0,
-    researchedTech: [],
-    activeResearch: null,
-    activeMissions: [],
-    completedMissions: [],
-    achievements: [],
-    experience: 0,
-  };
-}
 
 const defaultSettings = (): Settings => ({
   reducedMotion: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false,
   starDensity: "medium",
+  musicVolume: 0.5,
+  sfxVolume: 0.7,
+  muted: false,
+  playerName: "",
+  serverUrl: "",
 });
 
 type Listener = (state: AppState) => void;
@@ -99,8 +56,10 @@ class Store {
     return this.loadGame() !== null;
   }
 
-  startNewGame(mode: GameMode, season = 1): void {
-    this.state = { ...this.state, game: newGameState(mode, season) };
+  startNewGame(mode: GameMode, season = 1, role: RoleChoice | null = null): void {
+    const game = newGameState(mode, season);
+    game.role = role;
+    this.state = { ...this.state, game };
     this.persist();
   }
 

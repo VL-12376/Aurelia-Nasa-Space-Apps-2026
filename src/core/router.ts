@@ -5,6 +5,7 @@ export type ScreenId =
   | "menu"
   | "mode"
   | "multiplayer"
+  | "roles"
   | "settings"
   | "hq"
   | "hangar"
@@ -24,6 +25,12 @@ class Router {
   private busy = false;
   private pending: ScreenId | null = null;
   private leaveHooks: Array<() => void> = [];
+  private navListeners: Array<(id: ScreenId) => void> = [];
+
+  /** Lets other systems, such as audio, react to scene changes. */
+  onNavigate(fn: (id: ScreenId) => void): void {
+    this.navListeners.push(fn);
+  }
 
   mount(host: HTMLElement): void {
     this.host = host;
@@ -55,6 +62,7 @@ class Router {
     const prev = this.host.firstElementChild as HTMLElement | null;
     const animate = !store.get().settings.reducedMotion;
     this.current = id;
+    this.navListeners.forEach((fn) => fn(id));
 
     const finish = () => {
       this.busy = false;

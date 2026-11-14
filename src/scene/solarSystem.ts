@@ -3,7 +3,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import gsap from "gsap";
 import { store } from "../core/store";
 import { BODY_INFO, BODY_ORDER, type BodyId } from "../science/bodies";
-import { STYLE, createBodyMesh, createGlow, createRings } from "./planetMaterial";
+import { STYLE, coronaTexture, createBodyMesh, createGlow, createRings, createSkyDome, reticleTexture, updateRings } from "./planetMaterial";
 
 /**
  * Game scene scale (NOT real): orbit distances are compressed with a power law and planet
@@ -62,6 +62,10 @@ export class SolarSystemScene {
   private labelsVisible = true;
   private reduced = store.get().settings.reducedMotion;
   private sunDir = new THREE.Vector3();
+  private rings: THREE.Mesh | null = null;
+  private trails: { pivot: THREE.Object3D; entry: Entry }[] = [];
+  private coronas: THREE.Sprite[] = [];
+  private reticle: THREE.Sprite | null = null;
   private tmp = new THREE.Vector3();
 
   constructor(private container: HTMLElement, private cb: SolarCallbacks) {
@@ -87,6 +91,10 @@ export class SolarSystemScene {
     this.buildSun();
     for (const id of BODY_ORDER) if (id !== "sun") this.buildBody(id);
     this.buildBelt();
+    this.reticle = new THREE.Sprite(new THREE.SpriteMaterial({ map: reticleTexture("#b8a6e8"), transparent: true, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.85 }));
+    this.reticle.visible = false;
+    this.reticle.renderOrder = 20;
+    this.scene.add(this.reticle);
 
     const el = this.renderer.domElement;
     el.addEventListener("pointerdown", this.onDown);
@@ -113,15 +121,22 @@ export class SolarSystemScene {
   /* ---------- building ---------- */
 
   private buildStars(): void {
-    const count = 3200;
+    this.scene.add(createSkyDome());
+    const count = 4200;
     const pos = new Float32Array(count * 3);
+    const col = new Float32Array(count * 3);
+    const palette = [new THREE.Color("#f5f4fa"), new THREE.Color("#9fb7ff"), new THREE.Color("#ffd9b0"), new THREE.Color("#b8a6e8")];
     for (let i = 0; i < count; i++) {
       const v = new THREE.Vector3().randomDirection().multiplyScalar(500 + Math.random() * 200);
       pos.set([v.x, v.y, v.z], i * 3);
+      const c = palette[Math.floor(Math.random() * palette.length)];
+      const k = 0.35 + Math.random() * 0.65;
+      col.set([c.r * k, c.g * k, c.b * k], i * 3);
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-    this.scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xf5f4fa, size: 1.4, sizeAttenuation: false, transparent: true, opacity: 0.85 })));
+    geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    this.scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ size: 1.6, sizeAttenuation: false, vertexColors: true, transparent: true, opacity: 0.95 })));
 
     // A few faint constellation lines for depth.
     const segs: number[] = [];
@@ -168,7 +183,16 @@ export class SolarSystemScene {
   private buildSun(): void {
     const group = new THREE.Group();
     const mesh = createBodyMesh("sun", STYLE.sun.radius, 64);
-    group.add(mesh, createGlow(STYLE.sun.radius * 1.35, "#ff9a3c", 1.5));
+    group.add(mesh, createGlow(STYLE.sun.radius * 1.35, "#ff9a3c", 1.5), createGlow(STYLE.sun.radius * 1.9, "#ff6a1a", 0.55));
+    // Coronal rays: two textures turning in opposite directions, so the light streams and shimmers.
+    for (const [seed, rays, size, spin] of [[1, 90, 15, 0.02], [7, 60, 20, -0.012]] as const) {
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: coronaTexture(rays, seed), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.9 }));
+      s.scale.setScalar(size);
+      s.userData.spin = spin;
+      s.userData.base = size;
+      group.add(s);
+      this.coronas.push(s);
+    }
     const c = document.createElement("canvas");
     c.width = c.height = 128;
     const ctx = c.getContext("2d")!;
@@ -197,7 +221,10 @@ export class SolarSystemScene {
     const mesh = createBodyMesh(id, style.radius, id === "moon" || id === "ceres" ? 40 : 64);
     tilt.add(mesh);
     if (style.atmoPower && style.atmoPower > 0.1) tilt.add(createGlow(style.radius * 1.12, style.atmo ?? "#ffffff", 0.9));
-    if (id === "saturn") tilt.add(createRings(style.radius));
+    if (id === "saturn") {
+      this.rings = createRings(style.radius);
+      tilt.add(this.rings);
+    }
     group.add(tilt);
 
     const entry = this.makeEntry(id, group, mesh, orbitRadius, isMoon ? "earth" : undefined);
@@ -212,6 +239,25 @@ export class SolarSystemScene {
       this.scene.add(orbit);
       this.orbitLines.push(orbit);
       entry.orbit = orbit;
+
+      // A glowing trail behind the planet. It lives in a pivot that turns with the planet's orbital angle.
+      const pivot = new THREE.Object3D();
+      const steps = 40;
+      const tp: number[] = [];
+      const tc: number[] = [];
+      const colr = new THREE.Color(style.b);
+      for (let k = 0; k <= steps; k++) {
+        const phi = (k / steps) * (0.5 / Math.max(Math.sqrt(orbitRadius / 8), 0.6));
+        tp.push(Math.cos(phi) * orbitRadius, 0, -Math.sin(phi) * orbitRadius);
+        const f = (1 - k / steps) ** 1.6;
+        tc.push(colr.r * f, colr.g * f, colr.b * f);
+      }
+      const tg = new THREE.BufferGeometry();
+      tg.setAttribute("position", new THREE.Float32BufferAttribute(tp, 3));
+      tg.setAttribute("color", new THREE.Float32BufferAttribute(tc, 3));
+      pivot.add(new THREE.Line(tg, new THREE.LineBasicMaterial({ vertexColors: true, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false })));
+      this.scene.add(pivot);
+      this.trails.push({ pivot, entry });
     }
   }
 
@@ -374,6 +420,26 @@ export class SolarSystemScene {
       const a = e.phase + e.omega * this.elapsed;
       e.group.position.set(Math.cos(a) * e.orbitRadius, 0, Math.sin(a) * e.orbitRadius);
       if (!this.paused) e.mesh.rotation.y += e.spin * dt * this.timeScale;
+    }
+    for (const t of this.trails) t.pivot.rotation.y = -(t.entry.phase + t.entry.omega * this.elapsed);
+    // Rays fade as the camera nears the Sun's plane, so they never wash over a planet being inspected.
+    const camDist = this.camera.position.length();
+    const rayK = THREE.MathUtils.clamp((camDist - 6) / 26, 0.12, 1);
+    for (const s of this.coronas) {
+      const mat = s.material as THREE.SpriteMaterial;
+      mat.rotation += (s.userData.spin as number) * dt;
+      mat.opacity = 0.9 * rayK;
+      s.scale.setScalar((s.userData.base as number) * (1 + Math.sin(this.elapsed * 0.7 + (s.userData.spin as number) * 90) * 0.025));
+    }
+    if (this.rings) updateRings(this.rings, this.tmp.set(0, 0, 0));
+    if (this.reticle) {
+      this.reticle.visible = this.selected !== null && this.selected !== "sun";
+      if (this.reticle.visible) {
+        this.bodyPos(this.selected!, this.reticle.position);
+        const base = STYLE[this.selected!].radius * (this.selected === "saturn" ? 4.6 : 3.1);
+        this.reticle.scale.setScalar(base * (1 + Math.sin(this.elapsed * 3) * 0.015));
+        (this.reticle.material as THREE.SpriteMaterial).rotation += dt * 0.5;
+      }
     }
     for (const e of this.entries.values()) {
       if (e.id === "sun") continue;

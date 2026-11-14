@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { store } from "../core/store";
 import type { BodyId } from "../science/bodies";
-import { STYLE, createBodyMesh, createGlow, createRings } from "./planetMaterial";
+import { STYLE, createBodyMesh, createGlow, createRings, updateRings } from "./planetMaterial";
 
 /** A small rotating close-up of the selected world, shown in the info panel. */
 export class PlanetPortrait {
@@ -10,6 +10,8 @@ export class PlanetPortrait {
   private camera = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
   private holder = new THREE.Group();
   private mesh: THREE.Mesh | null = null;
+  private rings: THREE.Mesh | null = null;
+  private sunDir = new THREE.Vector3(0.8, 0.25, 0.6).normalize();
   private raf = 0;
   private start = performance.now();
   private observer: ResizeObserver;
@@ -37,8 +39,14 @@ export class PlanetPortrait {
     const tilt = new THREE.Group();
     tilt.rotation.z = THREE.MathUtils.degToRad(STYLE[id].tilt);
     this.mesh = createBodyMesh(id, r, 96);
+    // The group is scaled up, so the shader's bump strength needs the on-screen (world) radius.
+    (this.mesh.material as THREE.ShaderMaterial).uniforms.uRadius.value = r * scale;
     tilt.add(this.mesh);
-    if (id === "saturn") tilt.add(createRings(r));
+    this.rings = null;
+    if (id === "saturn") {
+      this.rings = createRings(r);
+      tilt.add(this.rings);
+    }
     if ((STYLE[id].atmoPower ?? 0) > 0.1) tilt.add(createGlow(r * 1.1, STYLE[id].atmo ?? "#ffffff", 0.9));
     if (id === "sun") tilt.add(createGlow(r * 1.25, "#ff9a3c", 1.4));
     group.add(tilt);
@@ -46,7 +54,7 @@ export class PlanetPortrait {
     // Saturn's rings extend far beyond the planet, so pull the camera back for it.
     this.camera.position.z = id === "saturn" ? 9.5 : 7;
     this.holder.add(group);
-    (this.mesh.material as THREE.ShaderMaterial).uniforms.uSun.value.set(0.8, 0.25, 0.6).normalize();
+    (this.mesh.material as THREE.ShaderMaterial).uniforms.uSun.value.copy(this.sunDir);
     this.draw();
   }
 
@@ -65,6 +73,7 @@ export class PlanetPortrait {
       (this.mesh.material as THREE.ShaderMaterial).uniforms.uTime.value = t;
       if (!this.reduced) this.mesh.rotation.y = t * 0.25;
     }
+    if (this.rings) updateRings(this.rings, this.sunDir.clone().multiplyScalar(200));
     this.renderer.render(this.scene, this.camera);
   }
 

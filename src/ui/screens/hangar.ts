@@ -18,7 +18,7 @@ import { session } from "../session";
 import { aiContribute } from "../../crew/ai";
 import { ROLES, ROLE_BY_ID, roleForPart, type RoleChoice, type RoleId } from "../../crew/roles";
 import { mp } from "../../net/session";
-import { chatDock } from "../crew";
+import { avatar, chatDock } from "../crew";
 
 const fmtMass = (kg: number) => (kg >= 10_000 ? `${(kg / 1000).toFixed(1)} t` : `${Math.round(kg).toLocaleString("en-US")} kg`);
 const fmtThrust = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(2)} MN` : `${Math.round(n / 1000).toLocaleString("en-US")} kN`);
@@ -557,8 +557,8 @@ export function hangarScreen(): HTMLElement {
       if (ai) aiRoles.push(r.id);
       return h(
         "div",
-        { class: `crew-row${mine ? " me" : ""}`, style: { "--rc": r.color } as unknown as Record<string, string> },
-        h("img", { src: r.portrait, alt: "" }),
+        { class: `crew-row${mine ? " me" : ""}`, style: { "--rc": r.color } },
+        avatar(r, mine),
         h("div", { class: "crew-text" }, h("div", { class: "crew-name" }, r.name, h("span", { class: `crew-who ${ai ? "ai" : "human"}` }, mine ? "YOU" : ai ? "AI" : holder!.name)), h("div", { class: "crew-title mono" }, r.title), h("div", { class: "crew-line" }, r.duties[0])),
         ai ? h("button", { class: "h-mini wide", title: `Let ${r.name} add the parts in their area for the chosen mission`, onclick: () => askCrew([r.id]) }, "Ask") : null,
       );

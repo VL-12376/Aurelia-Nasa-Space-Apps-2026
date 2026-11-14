@@ -36,7 +36,7 @@
   border: 1px solid var(--border);
   border-radius: 6px;
   overflow: hidden;
-  background: radial-gradient(ellipse at 40% 50%, rgba(33, 24, 61, 0.35), rgba(5, 5, 14, 0.85));
+  background: radial-gradient(ellipse at 40% 50%, rgba(33, 24, 61, 0.2), rgba(5, 5, 14, 0.25));
 }
 .solar-view {
   position: absolute;

@@ -23,7 +23,240 @@ function std(color: number, metalness = 0.55, roughness = 0.4, extra: Partial<TH
   return new THREE.MeshStandardMaterial({ color, metalness, roughness, ...extra });
 }
 
-function mesh(geo: THREE.BufferGeometry, mat: THREE.Material, owner?: number): THREE.Mesh {
+/* ---------- procedural surface textures (cached; generated once) ---------- */
+
+let hullTexCache: THREE.CanvasTexture | null = null;
+let hullBumpCache: THREE.CanvasTexture | null = null;
+let foilTexCache: THREE.CanvasTexture | null = null;
+let padTexCache: THREE.CanvasTexture | null = null;
+
+function rand(seed: number): () => number {
+  let s = seed;
+  return () => ((s = (s * 9301 + 49297) % 233280) / 233280);
+}
+
+/** Painted aluminium skin: welded panel seams, rivet rows, a stripe, the AURELIA wordmark and soot near the bottom. */
+function hullTextures(): { map: THREE.CanvasTexture; bump: THREE.CanvasTexture } {
+  if (hullTexCache && hullBumpCache) return { map: hullTexCache, bump: hullBumpCache };
+  const W = 1024;
+  const H = 512;
+  const paint = (bumpOnly: boolean): HTMLCanvasElement => {
+    const c = document.createElement("canvas");
+    c.width = W;
+    c.height = H;
+    const g = c.getContext("2d")!;
+    const r = rand(7);
+    g.fillStyle = bumpOnly ? "#808080" : "#f2f1f6";
+    g.fillRect(0, 0, W, H);
+    if (!bumpOnly) {
+      // Subtle tonal variation between panels.
+      for (let px = 0; px < 8; px++) for (let py = 0; py < 4; py++) {
+        const v = 232 + Math.floor(r() * 22);
+        g.fillStyle = `rgb(${v},${v},${v + 4})`;
+        g.fillRect(px * (W / 8), py * (H / 4), W / 8, H / 4);
+      }
+    }
+    // Seams
+    g.lineWidth = bumpOnly ? 5 : 2;
+    g.strokeStyle = bumpOnly ? "#202020" : "rgba(60,58,80,0.65)";
+    for (let i = 0; i <= 8; i++) {
+      g.beginPath();
+      g.moveTo((W / 8) * i, 0);
+      g.lineTo((W / 8) * i, H);
+      g.stroke();
+    }
+    for (let j = 0; j <= 4; j++) {
+      g.beginPath();
+      g.moveTo(0, (H / 4) * j);
+      g.lineTo(W, (H / 4) * j);
+      g.stroke();
+    }
+    // Rivets along every seam
+    g.fillStyle = bumpOnly ? "#f0f0f0" : "rgba(70,68,95,0.85)";
+    for (let i = 0; i <= 8; i++) for (let k = 0; k < H; k += 16) {
+      g.beginPath();
+      g.arc((W / 8) * i + 7, k + 8, 2.2, 0, Math.PI * 2);
+      g.arc((W / 8) * i - 7, k + 8, 2.2, 0, Math.PI * 2);
+      g.fill();
+    }
+    for (let j = 0; j <= 4; j++) for (let k = 0; k < W; k += 16) {
+      g.beginPath();
+      g.arc(k + 8, (H / 4) * j + 7, 2.2, 0, Math.PI * 2);
+      g.arc(k + 8, (H / 4) * j - 7, 2.2, 0, Math.PI * 2);
+      g.fill();
+    }
+    if (!bumpOnly) {
+      // Accent stripe
+      g.fillStyle = "#7563b5";
+      g.fillRect(0, H * 0.46, W, 18);
+      g.fillStyle = "#b8a6e8";
+      g.fillRect(0, H * 0.46 + 22, W, 4);
+      // Wordmark, repeated around the body
+      g.fillStyle = "#2a2548";
+      g.font = "600 46px Georgia, serif";
+      g.textBaseline = "middle";
+      for (const x of [W * 0.12, W * 0.62]) {
+        g.save();
+        g.translate(x, H * 0.18);
+        g.fillText("A U R E L I A", 0, 0);
+        g.restore();
+      }
+      // Service panels and warning labels
+      g.fillStyle = "#c9c7d6";
+      g.fillRect(W * 0.38, H * 0.6, 70, 46);
+      g.strokeStyle = "#8a86a4";
+      g.lineWidth = 2;
+      g.strokeRect(W * 0.38, H * 0.6, 70, 46);
+      g.fillStyle = "#d25b6a";
+      g.fillRect(W * 0.8, H * 0.7, 56, 14);
+      // Soot and heat staining toward the lower edge
+      const grad = g.createLinearGradient(0, H, 0, H * 0.62);
+      grad.addColorStop(0, "rgba(20,16,26,0.5)");
+      grad.addColorStop(1, "rgba(20,16,26,0)");
+      g.fillStyle = grad;
+      g.fillRect(0, H * 0.62, W, H * 0.38);
+      // Streaks
+      for (let i = 0; i < 40; i++) {
+        g.fillStyle = `rgba(30,26,40,${0.03 + r() * 0.05})`;
+        g.fillRect(r() * W, H * (0.45 + r() * 0.5), 2 + r() * 3, 30 + r() * 120);
+      }
+    }
+    return c;
+  };
+  const mk = (cv: HTMLCanvasElement, srgb: boolean) => {
+    const t = new THREE.CanvasTexture(cv);
+    if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.anisotropy = 8;
+    return t;
+  };
+  hullTexCache = mk(paint(false), true);
+  hullBumpCache = mk(paint(true), false);
+  return { map: hullTexCache, bump: hullBumpCache };
+}
+
+/** Crinkled gold thermal blanket. */
+function foilTexture(): THREE.CanvasTexture {
+  if (foilTexCache) return foilTexCache;
+  const c = document.createElement("canvas");
+  c.width = c.height = 256;
+  const g = c.getContext("2d")!;
+  const r = rand(21);
+  g.fillStyle = "#c79a3c";
+  g.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 700; i++) {
+    const x = r() * 256;
+    const y = r() * 256;
+    const l = 12 + r() * 40;
+    const a = r() * Math.PI;
+    g.strokeStyle = r() > 0.5 ? `rgba(255,224,150,${0.12 + r() * 0.25})` : `rgba(110,72,20,${0.12 + r() * 0.25})`;
+    g.lineWidth = 1 + r() * 2;
+    g.beginPath();
+    g.moveTo(x, y);
+    g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l);
+    g.stroke();
+  }
+  foilTexCache = new THREE.CanvasTexture(c);
+  foilTexCache.colorSpace = THREE.SRGBColorSpace;
+  foilTexCache.wrapS = foilTexCache.wrapT = THREE.RepeatWrapping;
+  return foilTexCache;
+}
+
+/** Hazard stripes and concentric guide rings for the launch pad. */
+function padTexture(): THREE.CanvasTexture {
+  if (padTexCache) return padTexCache;
+  const c = document.createElement("canvas");
+  c.width = c.height = 1024;
+  const g = c.getContext("2d")!;
+  g.fillStyle = "#1c1b2a";
+  g.fillRect(0, 0, 1024, 1024);
+  g.translate(512, 512);
+  g.strokeStyle = "rgba(184,166,232,0.55)";
+  g.lineWidth = 3;
+  for (const r of [120, 220, 330, 420]) {
+    g.beginPath();
+    g.arc(0, 0, r, 0, Math.PI * 2);
+    g.stroke();
+  }
+  // Hazard ring: alternating wedges
+  for (let i = 0; i < 48; i++) {
+    g.fillStyle = i % 2 ? "#e0b341" : "#14131f";
+    g.beginPath();
+    g.arc(0, 0, 490, (i / 48) * Math.PI * 2, ((i + 1) / 48) * Math.PI * 2);
+    g.arc(0, 0, 462, ((i + 1) / 48) * Math.PI * 2, (i / 48) * Math.PI * 2, true);
+    g.closePath();
+    g.fill();
+  }
+  // Radial flame-trench lines
+  g.strokeStyle = "rgba(255,255,255,0.08)";
+  g.lineWidth = 2;
+  for (let i = 0; i < 24; i++) {
+    const a = (i / 24) * Math.PI * 2;
+    g.beginPath();
+    g.moveTo(Math.cos(a) * 130, Math.sin(a) * 130);
+    g.lineTo(Math.cos(a) * 440, Math.sin(a) * 440);
+    g.stroke();
+  }
+  padTexCache = new THREE.CanvasTexture(c);
+  padTexCache.colorSpace = THREE.SRGBColorSpace;
+  padTexCache.anisotropy = 8;
+  return padTexCache;
+}
+
+/** Clear-coated painted hull for tanks. The texture repeats with the tank's size so panels stay square. */
+function hullPaint(color: number, tint: number, circumference: number, height: number): THREE.MeshPhysicalMaterial {
+  const { map, bump } = hullTextures();
+  const m = map.clone();
+  const b = bump.clone();
+  const rx = Math.max(1, Math.round(circumference / 3.2));
+  const ry = Math.max(1, Math.round(height / 2.6));
+  for (const t of [m, b]) t.repeat.set(rx, ry);
+  m.needsUpdate = b.needsUpdate = true;
+  return new THREE.MeshPhysicalMaterial({ color, map: m, bumpMap: b, bumpScale: 0.9, metalness: 0.28, roughness: 0.36, clearcoat: 0.7, clearcoatRoughness: 0.22, envMapIntensity: 1.1, emissive: tint, emissiveIntensity: 0 });
+}
+
+const PLUME_VERT = /* glsl */ `
+  varying vec2 vUv;
+  varying vec3 vObj;
+  void main() {
+    vUv = uv;
+    vObj = position;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+// Exhaust plume: turbulent flame that cools from white-blue at the nozzle to orange, with shock diamonds along the core.
+const PLUME_FRAG = /* glsl */ `
+  precision highp float;
+  varying vec2 vUv;
+  varying vec3 vObj;
+  uniform float uTime;
+  uniform float uK;
+  uniform float uCore;
+  float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+  float noise(vec2 p) {
+    vec2 i = floor(p), f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y);
+  }
+  void main() {
+    // vUv.y runs from the nozzle (1 at the cone's base) to the tip (0).
+    float along = 1.0 - vUv.y;
+    float ang = vUv.x * 6.2831;
+    float n = noise(vec2(ang * 3.0 + uTime * 2.0, along * 9.0 - uTime * 22.0)) * 0.6 + noise(vec2(ang * 7.0 - uTime * 3.0, along * 20.0 - uTime * 40.0)) * 0.4;
+    float body = pow(1.0 - along, 0.8 + (1.0 - uCore) * 0.8) * (0.55 + 0.7 * n);
+    float edge = smoothstep(0.0, 0.25, 1.0 - along);
+    float diamonds = pow(max(0.0, sin(along * 34.0 - uTime * 2.0)), 6.0) * (1.0 - along) * 0.8 * uCore;
+    vec3 hot = mix(vec3(0.75, 0.85, 1.0), vec3(1.0, 0.95, 0.85), along);
+    vec3 cool = mix(vec3(1.0, 0.55, 0.15), vec3(0.8, 0.22, 0.06), along);
+    vec3 col = mix(hot, cool, smoothstep(0.0, 0.7, along + (1.0 - uCore) * 0.35));
+    col += vec3(1.0, 0.9, 0.7) * diamonds;
+    float a = body * edge * uK;
+    gl_FragColor = vec4(col * a * 1.6, a);
+  }
+`;
+
+function mesh(geo: THREE.BufferGeometry, mat: THREE.Material | THREE.Material[], owner?: number): THREE.Mesh {
   const m = new THREE.Mesh(geo, mat);
   m.castShadow = true;
   m.receiveShadow = true;
@@ -77,6 +310,11 @@ export class HangarScene {
   private flameLight = new THREE.PointLight(0xff9a40, 0, 40, 1.6);
   private selectionBox: THREE.Box3Helper | null = null;
   private scanner: THREE.Mesh;
+  private pulseRing!: THREE.Mesh;
+  private smoke!: THREE.Points;
+  private smokeData: { x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number }[] = [];
+  private beacons: THREE.Mesh[] = [];
+  private plumeUniforms: { uTime: { value: number }; uK: { value: number } } = { uTime: { value: 0 }, uK: { value: 0 } };
   private dust: THREE.Points;
   private sections: THREE.Group[] = [];
   private explode = { v: 0, target: 0 };
@@ -96,7 +334,8 @@ export class HangarScene {
   private camTween = { y: 6, dist: 30 };
 
   constructor(private container: HTMLElement, private cb: HangarCallbacks) {
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
+    this.renderer.setClearColor(0x000000, 0);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
@@ -105,7 +344,7 @@ export class HangarScene {
     this.renderer.domElement.className = "hangar-canvas";
     container.append(this.renderer.domElement);
 
-    this.scene.background = new THREE.Color(0x07070f);
+    // No solid background: the page's live starfield shows through behind the hangar.
     this.scene.fog = new THREE.FogExp2(0x080817, 0.011);
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
@@ -129,6 +368,28 @@ export class HangarScene {
     dustGeo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
     this.dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({ color: 0xcfc8ff, size: 0.12, transparent: true, opacity: 0.35, depthWrite: false }));
     this.scene.add(this.dust);
+
+    // Smoke particles (soft round sprites), recycled while the engines fire.
+    const smokeCount = 360;
+    const sPos = new Float32Array(smokeCount * 3);
+    for (let i = 0; i < smokeCount; i++) {
+      this.smokeData.push({ x: 0, y: -50, z: 0, vx: 0, vy: 0, vz: 0, life: Math.random() });
+      sPos[i * 3 + 1] = -50;
+    }
+    const sGeo = new THREE.BufferGeometry();
+    sGeo.setAttribute("position", new THREE.BufferAttribute(sPos, 3));
+    const puff = document.createElement("canvas");
+    puff.width = puff.height = 64;
+    const pg = puff.getContext("2d")!;
+    const grd = pg.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grd.addColorStop(0, "rgba(255,240,225,0.9)");
+    grd.addColorStop(0.5, "rgba(210,200,215,0.35)");
+    grd.addColorStop(1, "rgba(200,195,210,0)");
+    pg.fillStyle = grd;
+    pg.fillRect(0, 0, 64, 64);
+    this.smoke = new THREE.Points(sGeo, new THREE.PointsMaterial({ map: new THREE.CanvasTexture(puff), size: 3.4, transparent: true, opacity: 0, depthWrite: false, color: 0xe9e3f2 }));
+    this.smoke.frustumCulled = false;
+    this.scene.add(this.smoke);
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
@@ -176,15 +437,40 @@ export class HangarScene {
     floor.receiveShadow = true;
     this.scene.add(floor);
 
-    // Launch pad and floor markings
-    const pad = mesh(new THREE.CylinderGeometry(3.6, 3.9, 0.35, 48), std(0x2a2838, 0.7, 0.45));
+    // Launch pad: hazard ring, guide rings and flame-trench lines, with lit edge strips.
+    const pad = mesh(new THREE.CylinderGeometry(3.9, 4.1, 0.35, 64), [std(0x2a2838, 0.8, 0.4), new THREE.MeshPhysicalMaterial({ map: padTexture(), metalness: 0.75, roughness: 0.3, clearcoat: 0.5 }), std(0x1a1926, 0.8, 0.4)]);
     pad.position.y = -0.175;
     this.scene.add(pad);
+    const padGlow = new THREE.Mesh(new THREE.TorusGeometry(4.0, 0.035, 8, 96), new THREE.MeshBasicMaterial({ color: 0xb8a6e8 }));
+    padGlow.rotation.x = Math.PI / 2;
+    padGlow.position.y = 0.02;
+    this.scene.add(padGlow);
+    this.pulseRing = new THREE.Mesh(new THREE.RingGeometry(0.98, 1, 96), new THREE.MeshBasicMaterial({ color: 0x7fe0ff, transparent: true, opacity: 0, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }));
+    this.pulseRing.rotation.x = -Math.PI / 2;
+    this.pulseRing.position.y = 0.03;
+    this.scene.add(this.pulseRing);
     for (const [r, o] of [[5.2, 0.55], [7.5, 0.25], [11, 0.12]] as const) {
       const ring = new THREE.Mesh(new THREE.RingGeometry(r, r + 0.08, 96), new THREE.MeshBasicMaterial({ color: 0xb8a6e8, transparent: true, opacity: o, side: THREE.DoubleSide, depthWrite: false }));
       ring.rotation.x = -Math.PI / 2;
       ring.position.y = 0.012;
       this.scene.add(ring);
+    }
+    // Four spotlights on posts around the pad, like real pad lighting.
+    for (let k = 0; k < 4; k++) {
+      const a = (k / 4) * Math.PI * 2 + Math.PI / 4;
+      const px = Math.cos(a) * 9;
+      const pz = Math.sin(a) * 9;
+      const post = mesh(new THREE.CylinderGeometry(0.1, 0.14, 6, 10), std(0x2b2a3d, 0.85, 0.35));
+      post.position.set(px, 3, pz);
+      this.scene.add(post);
+      const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.3, 0.4), new THREE.MeshBasicMaterial({ color: 0xe8e4ff }));
+      lamp.position.set(px, 6.1, pz);
+      lamp.lookAt(0, 8, 0);
+      this.scene.add(lamp);
+      const spot = new THREE.SpotLight(0xdcd6ff, 220, 60, 0.38, 0.7, 1.4);
+      spot.position.set(px, 6.1, pz);
+      spot.target.position.set(0, 9, 0);
+      this.scene.add(spot, spot.target);
     }
 
     // Walls with panel lines
@@ -313,6 +599,7 @@ export class HangarScene {
     const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 12), new THREE.MeshBasicMaterial({ color: 0xef8a9a }));
     beacon.position.set(x, H + 0.3, 0);
     this.gantry.add(beacon);
+    this.beacons = [beacon];
   }
 
   /* ---------- rocket ---------- */
@@ -344,10 +631,17 @@ export class HangarScene {
       sg.position.y = y;
       sg.userData.baseY = y;
       const hull = COLORS.hull[Math.min(si, 2)];
-      const hullMat = () => std(hull, 0.35, 0.38);
-      const skirt = mesh(new THREE.CylinderGeometry(s.D / 2, s.D / 2 * 1.02, s.engineH, 40), std(COLORS.gun, 0.7, 0.45));
+      const skirt = mesh(new THREE.CylinderGeometry(s.D / 2, s.D / 2 * 1.02, s.engineH, 40), std(COLORS.gun, 0.8, 0.38));
       skirt.position.y = s.engineH / 2;
       sg.add(skirt);
+      // Thrust structure: a ring of reinforcing ribs and a darker base plate around the engines.
+      for (let k = 0; k < 12; k++) {
+        const a = (k / 12) * Math.PI * 2;
+        const rib = mesh(new THREE.BoxGeometry(0.05, s.engineH * 0.9, 0.12), std(0x23222f, 0.8, 0.4));
+        rib.position.set(Math.cos(a) * (s.D / 2 + 0.01), s.engineH / 2, Math.sin(a) * (s.D / 2 + 0.01));
+        rib.rotation.y = -a;
+        sg.add(rib);
+      }
 
       // Engines
       const ringR = Math.max(s.D * 0.28, s.engines.length > 1 ? 0.55 : 0);
@@ -359,12 +653,38 @@ export class HangarScene {
         const d = ep.diameter * fit;
         const len = ep.length;
         const eg = new THREE.Group();
-        const pts = [[0.1, 1], [0.15, 0.88], [0.12, 0.72], [0.2, 0.55], [0.34, 0.3], [0.5, 0.0]].map(([r, yy]) => new THREE.Vector2(r * d, yy * len));
-        const bell = mesh(new THREE.LatheGeometry(pts, 28), std(0x4a4958, 0.9, 0.3, { side: THREE.DoubleSide }), e.index);
+        // A bell contour: narrow throat, rapid expansion, then a gentle flare. Ribs run along its length.
+        const pts: THREE.Vector2[] = [];
+        for (let k = 0; k <= 18; k++) {
+          const u = k / 18; // 0 = exit, 1 = throat
+          const rr = 0.1 + 0.4 * Math.pow(1 - u, 0.62) * (1 - 0.12 * Math.sin(u * Math.PI));
+          pts.push(new THREE.Vector2(rr * d, u * len));
+        }
+        const bellMat = new THREE.MeshPhysicalMaterial({ color: 0x5a5868, metalness: 0.95, roughness: 0.28, side: THREE.DoubleSide, clearcoat: 0.3, envMapIntensity: 1.3, emissive: 0xff5a1a, emissiveIntensity: 0 });
+        bellMat.userData.bell = true;
+        const bell = mesh(new THREE.LatheGeometry(pts, 36), bellMat, e.index);
         eg.add(bell);
-        const chamber = mesh(new THREE.CylinderGeometry(d * 0.22, d * 0.26, len * 0.3, 16), std(COLORS.foil, 0.9, 0.35), e.index);
+        // Cooling-channel ribs and a heated throat band.
+        for (let k = 0; k < 14; k++) {
+          const a = (k / 14) * Math.PI * 2;
+          const rib = mesh(new THREE.BoxGeometry(0.018 * d, len * 0.82, 0.018 * d), std(0x8a8899, 0.9, 0.3), e.index);
+          rib.position.set(Math.cos(a) * d * 0.27, len * 0.46, Math.sin(a) * d * 0.27);
+          rib.rotation.set(Math.sin(a) * 0.2, -a, -Math.cos(a) * 0.2);
+          eg.add(rib);
+        }
+        const lip = mesh(new THREE.TorusGeometry(0.5 * d, 0.02 * d + 0.01, 8, 36), std(0xb9b7c6, 0.95, 0.25), e.index);
+        lip.rotation.x = Math.PI / 2;
+        eg.add(lip);
+        const chamber = mesh(new THREE.CylinderGeometry(d * 0.22, d * 0.26, len * 0.3, 20), std(COLORS.foil, 0.95, 0.3, { map: foilTexture(), envMapIntensity: 1.4 }), e.index);
         chamber.position.y = len * 1.05;
         eg.add(chamber);
+        // Turbopump and feed lines
+        const pump = mesh(new THREE.CylinderGeometry(d * 0.12, d * 0.12, len * 0.36, 16), std(0x3c3b4c, 0.85, 0.32), e.index);
+        pump.position.set(d * 0.3, len * 1.02, 0);
+        eg.add(pump);
+        const pipe = mesh(new THREE.TorusGeometry(d * 0.17, d * 0.018, 8, 20, Math.PI), std(0xc9c8d6, 0.9, 0.3), e.index);
+        pipe.position.set(d * 0.15, len * 1.2, 0);
+        eg.add(pipe);
         const [px, pz] = spots[i] ?? [0, 0];
         const topY = s.engineH - 0.05;
         eg.position.set(px, topY - len, pz);
@@ -376,17 +696,35 @@ export class HangarScene {
       let cur = s.engineH;
       s.tanks.forEach((t) => {
         const tp = t.part as TankPart;
-        const tank = mesh(new THREE.CylinderGeometry(tp.diameter / 2, tp.diameter / 2, tp.height, 48), hullMat(), t.index);
+        const tank = mesh(new THREE.CylinderGeometry(tp.diameter / 2, tp.diameter / 2, tp.height, 64), hullPaint(hull, 0xb8a6e8, Math.PI * tp.diameter, tp.height), t.index);
         tank.position.y = cur + tp.height / 2;
         sg.add(tank);
+        // Domed ends make each tank read as a pressure vessel rather than a plain cylinder.
+        for (const sign of [-1, 1]) {
+          const dome = mesh(new THREE.SphereGeometry(tp.diameter / 2, 40, 12, 0, Math.PI * 2, 0, Math.PI / 2), hullPaint(hull, 0xb8a6e8, Math.PI * tp.diameter * 0.5, tp.diameter * 0.3), t.index);
+          dome.scale.y = 0.16;
+          dome.position.y = cur + (sign > 0 ? tp.height : 0);
+          if (sign < 0) dome.rotation.x = Math.PI;
+          sg.add(dome);
+        }
         for (const f of [0.14, 0.86]) {
-          const band = mesh(new THREE.CylinderGeometry(tp.diameter / 2 + 0.015, tp.diameter / 2 + 0.015, tp.height * 0.045, 48), std(COLORS.accent, 0.5, 0.35), t.index);
+          const band = mesh(new THREE.CylinderGeometry(tp.diameter / 2 + 0.018, tp.diameter / 2 + 0.018, tp.height * 0.045, 64), new THREE.MeshPhysicalMaterial({ color: COLORS.accent, metalness: 0.6, roughness: 0.28, clearcoat: 0.8 }), t.index);
           band.position.y = cur + tp.height * f;
           sg.add(band);
         }
-        const seam = mesh(new THREE.CylinderGeometry(tp.diameter / 2 + 0.03, tp.diameter / 2 + 0.03, 0.06, 48), std(COLORS.gun, 0.8, 0.4), t.index);
+        const seam = mesh(new THREE.CylinderGeometry(tp.diameter / 2 + 0.035, tp.diameter / 2 + 0.035, 0.07, 64), std(COLORS.gun, 0.85, 0.35), t.index);
         seam.position.y = cur + tp.height;
         sg.add(seam);
+        // Vertical feed line (a raised external conduit) and its brackets.
+        const conduit = mesh(new THREE.CylinderGeometry(0.035, 0.035, tp.height * 0.96, 10), std(0xb8b6c8, 0.9, 0.3), t.index);
+        conduit.position.set(tp.diameter / 2 + 0.05, cur + tp.height / 2, 0);
+        sg.add(conduit);
+        for (let k = 1; k < 4; k++) {
+          const clamp = mesh(new THREE.TorusGeometry(0.05, 0.015, 6, 12), std(0x2a2938, 0.8, 0.4), t.index);
+          clamp.position.set(tp.diameter / 2 + 0.05, cur + (tp.height * k) / 4, 0);
+          clamp.rotation.x = Math.PI / 2;
+          sg.add(clamp);
+        }
         cur += tp.height;
       });
       // Empty stage: a short placeholder body so the engine has something to push
@@ -395,9 +733,14 @@ export class HangarScene {
       // Adapter to whatever sits above
       const nextD = stageInfo[si + 1]?.D ?? (b ? craftBaseD * 1.15 : 0.3);
       const adapterH = 0.5 + Math.abs(s.D - nextD) * 0.45;
-      const adapter = mesh(new THREE.CylinderGeometry(nextD / 2, s.D / 2, adapterH, 40), std(COLORS.gun, 0.6, 0.45));
+      const adapter = mesh(new THREE.CylinderGeometry(nextD / 2, s.D / 2, adapterH, 48), new THREE.MeshPhysicalMaterial({ color: COLORS.gun, metalness: 0.75, roughness: 0.34, clearcoat: 0.4 }));
       adapter.position.y = cur + adapterH / 2;
       sg.add(adapter);
+      // Separation ring with a thin glowing line, where the stages part.
+      const sepRing = new THREE.Mesh(new THREE.TorusGeometry(s.D / 2 + 0.01, 0.018, 6, 64), new THREE.MeshBasicMaterial({ color: 0xb8a6e8 }));
+      sepRing.rotation.x = Math.PI / 2;
+      sepRing.position.y = cur + adapterH;
+      sg.add(sepRing);
       cur += adapterH;
       root.add(sg);
       sections.push(sg);
@@ -433,7 +776,7 @@ export class HangarScene {
     const busIndex = design.parts.findIndex((r) => part(r).category === "structure");
     const base = shieldH;
 
-    const body = mesh(new THREE.CylinderGeometry(R, R, H, 6), std(COLORS.foil, 0.85, 0.32), busIndex);
+    const body = mesh(new THREE.CylinderGeometry(R, R, H, 6), new THREE.MeshPhysicalMaterial({ color: 0xffffff, map: foilTexture(), metalness: 0.9, roughness: 0.3, clearcoat: 0.5, envMapIntensity: 1.5 }), busIndex);
     body.position.y = base + H / 2;
     g.add(body);
     for (const yy of [0.04, 0.96]) {
@@ -489,7 +832,7 @@ export class HangarScene {
         boom.position.x = (plates * (pw + 0.06) + 0.2) / 2;
         wing.add(boom);
         for (let i = 0; i < plates; i++) {
-          const plate = m(new THREE.BoxGeometry(pw, 1.5, 0.035), std(0xffffff, 0.35, 0.28, { map: tex, emissive: 0x0a1230, emissiveIntensity: 0.6 }));
+          const plate = m(new THREE.BoxGeometry(pw, 1.5, 0.035), new THREE.MeshPhysicalMaterial({ color: 0xffffff, map: tex, metalness: 0.75, roughness: 0.22, clearcoat: 1, clearcoatRoughness: 0.08, emissive: 0x0a1230, emissiveIntensity: 0.6, envMapIntensity: 1.6 }));
           plate.position.set(0.15 + pw / 2 + i * (pw + 0.06), 0, 0);
           wing.add(plate);
         }
@@ -645,9 +988,14 @@ export class HangarScene {
   private buildFlames(bases: Built["engineBases"]): void {
     for (const b of bases) {
       const len = Math.max(4, b.len * 3.2);
-      const outer = new THREE.Mesh(new THREE.ConeGeometry(b.d * 0.5, len, 20, 1, true), new THREE.MeshBasicMaterial({ color: 0xff8a30, transparent: true, opacity: 0.0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
-      const inner = new THREE.Mesh(new THREE.ConeGeometry(b.d * 0.28, len * 0.6, 20, 1, true), new THREE.MeshBasicMaterial({ color: 0xcfe6ff, transparent: true, opacity: 0.0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
-      for (const [c, k] of [[outer, 1], [inner, 0.6]] as const) {
+      const mk = (radius: number, length: number, core: number) =>
+        new THREE.Mesh(
+          new THREE.ConeGeometry(radius, length, 28, 12, true),
+          new THREE.ShaderMaterial({ vertexShader: PLUME_VERT, fragmentShader: PLUME_FRAG, uniforms: { uTime: this.plumeUniforms.uTime, uK: this.plumeUniforms.uK, uCore: { value: core } }, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }),
+        );
+      const outer = mk(b.d * 0.52, len, 0.0);
+      const inner = mk(b.d * 0.3, len * 0.62, 1.0);
+      for (const [c, k] of [[outer, 1], [inner, 0.62]] as const) {
         c.rotation.x = Math.PI;
         c.position.copy(b.pos);
         c.position.y += 0.1 - (len * k) / 2;
@@ -756,7 +1104,7 @@ export class HangarScene {
     this.renderer.domElement.style.cursor = idx === null ? "grab" : "pointer";
     this.rocket.traverse((o) => {
       const m = o as THREE.Mesh;
-      if (!m.isMesh || m.userData.owner === undefined || !(m.material instanceof THREE.MeshStandardMaterial)) return;
+      if (!m.isMesh || m.userData.owner === undefined || !(m.material instanceof THREE.MeshStandardMaterial) || m.material.userData.bell) return;
       if (gsap.isTweening(m.material)) return;
       m.material.emissive.set(0xb8a6e8);
       m.material.emissiveIntensity = m.userData.owner === idx ? 0.35 : 0;
@@ -786,17 +1134,56 @@ export class HangarScene {
 
     // Static fire
     this.fireK += ((this.firing ? 1 : 0) - this.fireK) * 0.12;
+    this.plumeUniforms.uTime.value = t;
+    this.plumeUniforms.uK.value = this.fireK * (0.9 + Math.sin(t * 40) * 0.06 + Math.random() * 0.05);
     this.flames.children.forEach((c, i) => {
-      const m = c as THREE.Mesh;
-      const k = m.userData.k as number;
-      const flick = 0.85 + Math.sin(t * 40 + i * 1.7) * 0.1 + Math.random() * 0.08;
-      (m.material as THREE.MeshBasicMaterial).opacity = this.fireK * (k === 1 ? 0.5 : 0.85) * flick;
-      m.scale.set(1, flick, 1);
+      const flick = 0.92 + Math.sin(t * 38 + i * 1.7) * 0.05 + Math.random() * 0.04;
+      c.scale.set(1, flick, 1);
     });
     this.flameLight.intensity = this.fireK * (260 + Math.random() * 40);
     this.flameLight.position.set(0, 1.2, 0);
     if (this.firing && !this.reduced) this.rocket.position.set((Math.random() - 0.5) * 0.012, 0, (Math.random() - 0.5) * 0.012);
     else this.rocket.position.set(0, 0, 0);
+
+    // Engine bells glow cherry-red while firing.
+    this.rocket.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh && m.material instanceof THREE.MeshPhysicalMaterial && m.material.userData.bell) m.material.emissiveIntensity = this.fireK * 0.55;
+    });
+
+    // Exhaust smoke: a ground-hugging cloud that billows outward from the pad while the engines run.
+    const sp = this.smoke.geometry.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < this.smokeData.length; i++) {
+      const p = this.smokeData[i];
+      p.life -= 0.012;
+      if (p.life <= 0) {
+        if (this.fireK > 0.3) {
+          const a = Math.random() * Math.PI * 2;
+          p.x = Math.cos(a) * 0.6;
+          p.z = Math.sin(a) * 0.6;
+          p.y = 0.3 + Math.random() * 0.4;
+          p.vx = Math.cos(a) * (0.05 + Math.random() * 0.07);
+          p.vz = Math.sin(a) * (0.05 + Math.random() * 0.07);
+          p.vy = 0.01 + Math.random() * 0.025;
+          p.life = 1;
+        } else p.y = -50;
+      } else {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.z += p.vz;
+        p.vx *= 0.995;
+        p.vz *= 0.995;
+      }
+      sp.setXYZ(i, p.x, p.y, p.z);
+    }
+    sp.needsUpdate = true;
+    (this.smoke.material as THREE.PointsMaterial).opacity = 0.35 * Math.min(1, this.fireK * 2 + 0.05);
+
+    // Pad scan pulse and gantry beacons.
+    const pk = (t * 0.35) % 1;
+    this.pulseRing.scale.setScalar(1 + pk * 10);
+    (this.pulseRing.material as THREE.MeshBasicMaterial).opacity = (1 - pk) * 0.35;
+    this.beacons.forEach((b, i) => ((b.material as THREE.MeshBasicMaterial).color.setHex(Math.sin(t * 3 + i) > 0 ? 0xef8a9a : 0x4a2530)));
 
     if (this.selectionBox) this.selectionBox.visible = Math.sin(t * 5) > -0.6;
 

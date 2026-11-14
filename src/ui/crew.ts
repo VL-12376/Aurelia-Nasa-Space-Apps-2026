@@ -1,23 +1,46 @@
 import { h } from "../core/dom";
 import { ROLES, type RoleDef, type RoleId } from "../crew/roles";
 import { mp } from "../net/session";
+import { tilt } from "./fx";
+
+/** A portrait with a holographic treatment: slow breathing, scanlines, a sweeping scan band and corner marks. */
+export function holoPortrait(r: RoleDef, extra: (Node | null)[] = []): HTMLElement {
+  return h(
+    "div",
+    { class: "rc-photo holo", style: { "--rc": r.color } },
+    h("img", { src: r.portrait, alt: `${r.name}, ${r.title}`, loading: "lazy" }),
+    h("div", { class: "holo-lines" }),
+    h("div", { class: "holo-scan" }),
+    h("div", { class: "holo-frame" }),
+    ...extra,
+  );
+}
+
+/** A round portrait with a rotating status ring. The ring spins faster for the player's own role. */
+export function avatar(r: RoleDef, me = false): HTMLElement {
+  return h("span", { class: `avatar${me ? " me" : ""}`, style: { "--rc": r.color } }, h("i", { class: "avatar-ring" }), h("img", { src: r.portrait, alt: "" }));
+}
 
 export function roleCard(r: RoleDef, opts: { badge?: string; badgeTone?: string; selected?: boolean; dim?: boolean; footer?: Node | null; onclick?: () => void; compact?: boolean } = {}): HTMLElement {
+  const idx = ROLES.findIndex((x) => x.id === r.id) + 1;
   const body = [
-    h("div", { class: "rc-photo" }, h("img", { src: r.portrait, alt: `${r.name}, ${r.title}`, loading: "lazy" }), opts.badge ? h("span", { class: `rc-badge ${opts.badgeTone ?? ""}` }, opts.badge) : null),
+    holoPortrait(r, [opts.badge ? h("span", { class: `rc-badge ${opts.badgeTone ?? ""}` }, opts.badge) : null]),
     h(
       "div",
       { class: "rc-body" },
       h("div", { class: "rc-role mono", style: { color: r.color } }, r.title.toUpperCase()),
       h("h3", { class: "rc-name" }, r.name),
       h("p", { class: "rc-tag" }, `“${r.tagline}”`),
+      h("div", { class: "rc-id mono" }, h("span", null, `CREW-0${idx}`), h("span", { class: "rc-barcode" }), h("span", { class: "rc-stat" }, h("i"), "ONLINE")),
       opts.compact ? null : h("p", { class: "rc-bio" }, r.bio),
       opts.compact ? null : h("ul", { class: "rc-duties" }, ...r.duties.map((d) => h("li", null, d))),
       opts.footer ?? null,
     ),
   ];
   const cls = `role-card${opts.selected ? " selected" : ""}${opts.dim ? " dim" : ""}`;
-  return opts.onclick ? h("button", { class: cls, onclick: opts.onclick, style: { "--rc": r.color } as unknown as Record<string, string> }, ...body) : h("div", { class: cls, style: { "--rc": r.color } as unknown as Record<string, string> }, ...body);
+  const el = opts.onclick ? h("button", { class: cls, onclick: opts.onclick, style: { "--rc": r.color } }, ...body) : h("div", { class: cls, style: { "--rc": r.color } }, ...body);
+  tilt(el);
+  return el;
 }
 
 export interface CrewRow {
@@ -41,9 +64,9 @@ export function crewStrip(): { el: HTMLElement; update: (rows: CrewRow[]) => voi
         const def = ROLES.find((r) => r.id === row.role)!;
         return h(
           "div",
-          { class: `crew-row${row.speaking ? " speaking" : ""}${row.me ? " me" : ""}`, style: { "--rc": def.color } as unknown as Record<string, string> },
-          h("img", { src: def.portrait, alt: "" }),
-          h("div", { class: "crew-text" }, h("div", { class: "crew-name" }, def.name, h("span", { class: `crew-who ${row.ai ? "ai" : "human"}` }, row.me ? "YOU" : row.ai ? "AI" : row.who)), h("div", { class: "crew-title mono" }, def.title), row.line ? h("div", { class: "crew-line" }, row.line) : null),
+          { class: `crew-row${row.speaking ? " speaking" : ""}${row.me ? " me" : ""}`, style: { "--rc": def.color } },
+          avatar(def, row.me),
+          h("div", { class: "crew-text" }, h("div", { class: "crew-name" }, def.name, h("span", { class: `crew-who ${row.ai ? "ai" : "human"}` }, row.me ? "YOU" : row.ai ? "AI" : row.who), row.speaking ? h("span", { class: "voice", "aria-hidden": "true" }, h("i"), h("i"), h("i"), h("i")) : null), h("div", { class: "crew-title mono" }, def.title), row.line ? h("div", { class: "crew-line" }, row.line) : null),
         );
       }),
     );

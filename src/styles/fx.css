@@ -1,0 +1,407 @@
+/* Sci-fi effects: screen overlay, glows, holographic characters, tilt cards */
+
+/* ----- Screen overlay: scanlines, scan beam, vignette ----- */
+.fx-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% 50%, transparent 62%, rgba(2, 2, 10, 0.45) 100%),
+    repeating-linear-gradient(0deg, rgba(200, 190, 255, 0.022) 0 1px, transparent 1px 3px);
+  overflow: hidden;
+}
+.fx-beam {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 22%;
+  top: -25%;
+  background: linear-gradient(180deg, transparent, rgba(160, 140, 255, 0.05) 50%, transparent);
+  animation: fx-beam 11s linear infinite;
+}
+@keyframes fx-beam {
+  to {
+    transform: translateY(560%);
+  }
+}
+.fx-overlay.off .fx-beam {
+  display: none;
+}
+
+/* ----- Buttons: light sweep and glow ----- */
+.btn {
+  position: relative;
+  overflow: hidden;
+}
+.btn::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -60%;
+  width: 40%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.28), transparent);
+  transform: skewX(-20deg);
+  pointer-events: none;
+}
+.btn:hover:not(:disabled)::after {
+  animation: btn-sweep 0.8s ease;
+}
+@keyframes btn-sweep {
+  to {
+    left: 130%;
+  }
+}
+.btn:not(.ghost):not(:disabled):not(.small) {
+  animation: btn-pulse 3.6s ease-in-out infinite;
+}
+@keyframes btn-pulse {
+  50% {
+    box-shadow: 0 0 18px rgba(117, 99, 181, 0.45);
+  }
+}
+
+/* ----- Panels: power-up flicker and live corner brackets ----- */
+.hq3-card,
+.hud,
+.mc-card,
+.h-panel {
+  animation: panel-boot 0.7s ease-out both;
+}
+@keyframes panel-boot {
+  0% {
+    opacity: 0;
+  }
+  18% {
+    opacity: 0.9;
+  }
+  26% {
+    opacity: 0.25;
+  }
+  40% {
+    opacity: 1;
+  }
+  52% {
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+.hq3-card::after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 12px;
+  height: 12px;
+  border-right: 2px solid var(--lavender);
+  border-bottom: 2px solid var(--lavender);
+  animation: bracket-pulse 3s ease-in-out infinite;
+}
+@keyframes bracket-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+.led {
+  animation: led-blink 2.4s ease-in-out infinite;
+}
+@keyframes led-blink {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* ----- Headquarters globe: rotating reticle and ticker ----- */
+.hq3-reticle {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.hq3-reticle svg {
+  width: min(78%, 620px);
+  aspect-ratio: 1;
+  opacity: 0.55;
+}
+.ret-a {
+  transform-origin: 50% 50%;
+  animation: ret-spin 70s linear infinite;
+}
+.ret-b {
+  transform-origin: 50% 50%;
+  animation: ret-spin 46s linear infinite reverse;
+}
+@keyframes ret-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.hq3-ticker {
+  overflow: hidden;
+  white-space: nowrap;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: rgba(8, 8, 23, 0.6);
+  font-size: 0.64rem;
+  letter-spacing: 0.12em;
+  color: var(--lavender);
+  mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+}
+.hq3-ticker span {
+  display: inline-block;
+  padding: 5px 0;
+  animation: ticker 70s linear infinite;
+}
+@keyframes ticker {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+.hq3-chip-v {
+  text-shadow: 0 0 14px rgba(184, 166, 232, 0.55);
+}
+
+/* ----- Characters: holographic portraits ----- */
+.holo {
+  position: relative;
+  overflow: hidden;
+  background: #0b0a1e;
+}
+.holo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform-origin: 50% 65%;
+  animation: holo-breathe 9s ease-in-out infinite alternate, holo-glitch 9s steps(1) infinite;
+}
+@keyframes holo-breathe {
+  from {
+    transform: scale(1.02) translateY(0);
+  }
+  to {
+    transform: scale(1.075) translateY(-1.4%);
+  }
+}
+@keyframes holo-glitch {
+  0%,
+  93%,
+  100% {
+    filter: none;
+  }
+  94% {
+    filter: saturate(1.7) hue-rotate(25deg) contrast(1.15);
+  }
+  95% {
+    filter: brightness(1.35) hue-rotate(-20deg);
+  }
+  96% {
+    filter: none;
+  }
+}
+.holo-lines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(120, 200, 255, 0.07) 0 1px, transparent 1px 3px);
+  mix-blend-mode: screen;
+}
+.holo-scan {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 30%;
+  top: -30%;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--rc, #7fe0ff) 38%, transparent), transparent);
+  mix-blend-mode: screen;
+  animation: holo-scan 4.6s ease-in-out infinite;
+}
+@keyframes holo-scan {
+  0% {
+    top: -30%;
+  }
+  60%,
+  100% {
+    top: 110%;
+  }
+}
+.holo-frame {
+  position: absolute;
+  inset: 6px;
+  pointer-events: none;
+  --c: var(--rc, #b8a6e8);
+  background:
+    linear-gradient(var(--c), var(--c)) top left / 14px 2px no-repeat,
+    linear-gradient(var(--c), var(--c)) top left / 2px 14px no-repeat,
+    linear-gradient(var(--c), var(--c)) top right / 14px 2px no-repeat,
+    linear-gradient(var(--c), var(--c)) top right / 2px 14px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom left / 14px 2px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom left / 2px 14px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom right / 14px 2px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom right / 2px 14px no-repeat;
+  opacity: 0.85;
+}
+
+/* ----- Role cards: 3D tilt with moving glare ----- */
+.role-card {
+  --rx: 0deg;
+  --ry: 0deg;
+  --mx: 50%;
+  --my: 50%;
+  transform-style: preserve-3d;
+  transform: perspective(900px) rotateX(var(--rx)) rotateY(var(--ry));
+  transition: transform 0.12s ease-out, border-color 0.25s ease, box-shadow 0.25s ease;
+}
+button.role-card:hover,
+button.role-card:focus-visible,
+.role-card.selected {
+  transform: perspective(900px) translateY(-6px) rotateX(var(--rx)) rotateY(var(--ry));
+}
+.role-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 0.25s;
+  background: radial-gradient(circle at var(--mx) var(--my), rgba(255, 255, 255, 0.2), transparent 45%);
+}
+.role-card:hover::after {
+  opacity: 1;
+}
+.role-card {
+  position: relative;
+}
+.rc-photo.holo::after {
+  z-index: 1;
+}
+.rc-photo .holo-frame,
+.rc-photo .holo-lines,
+.rc-photo .holo-scan {
+  z-index: 2;
+}
+.rc-id {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  font-size: 0.58rem;
+  letter-spacing: 0.14em;
+  color: var(--silver);
+  opacity: 0.8;
+}
+.rc-barcode {
+  flex: 1;
+  height: 12px;
+  background: repeating-linear-gradient(90deg, var(--rc) 0 1px, transparent 1px 3px, var(--rc) 3px 5px, transparent 5px 6px);
+  opacity: 0.55;
+}
+.rc-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ok);
+}
+.rc-stat i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+  animation: led-blink 1.8s ease-in-out infinite;
+}
+
+/* ----- Small avatars with a rotating status ring ----- */
+.avatar {
+  --rc: var(--lavender);
+  position: relative;
+  flex-shrink: 0;
+  width: 46px;
+  height: 46px;
+}
+.avatar img {
+  position: absolute;
+  inset: 3px;
+  width: calc(100% - 6px);
+  height: calc(100% - 6px);
+  border-radius: 50%;
+  object-fit: cover;
+  border: 0;
+  animation: holo-glitch 9s steps(1) infinite;
+}
+.avatar-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, var(--rc), transparent 30%, var(--rc) 55%, transparent 80%, var(--rc));
+  -webkit-mask: radial-gradient(circle, transparent 62%, #000 64%);
+  mask: radial-gradient(circle, transparent 62%, #000 64%);
+  animation: ret-spin 6s linear infinite;
+}
+.avatar.me .avatar-ring {
+  animation-duration: 2.6s;
+  filter: drop-shadow(0 0 5px var(--rc));
+}
+.crew-row .avatar img,
+.hq3-face .avatar img,
+.wait-head .avatar img {
+  border: 0;
+  box-shadow: none;
+  animation: holo-glitch 9s steps(1) infinite;
+}
+.crew-row .avatar {
+  width: 48px;
+  height: 48px;
+}
+
+/* Voice bars while a crew member speaks */
+.voice {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 12px;
+}
+.voice i {
+  width: 2px;
+  background: var(--rc, var(--lavender));
+  border-radius: 1px;
+  animation: voice 0.7s ease-in-out infinite;
+}
+.voice i:nth-child(2) {
+  animation-delay: 0.12s;
+}
+.voice i:nth-child(3) {
+  animation-delay: 0.26s;
+}
+.voice i:nth-child(4) {
+  animation-delay: 0.4s;
+}
+@keyframes voice {
+  0%,
+  100% {
+    height: 3px;
+  }
+  50% {
+    height: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fx-beam,
+  .holo img,
+  .holo-scan,
+  .avatar-ring,
+  .ret-a,
+  .ret-b,
+  .hq3-ticker span {
+    animation: none;
+  }
+}

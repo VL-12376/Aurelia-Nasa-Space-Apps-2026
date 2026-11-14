@@ -7,9 +7,12 @@ import "./styles/solar.css";
 import "./styles/hangar.css";
 import "./styles/mission.css";
 import "./styles/crew.css";
+import "./styles/hq.css";
+import "./styles/fx.css";
 
 import { router } from "./core/router";
 import { startNetFlow } from "./net/flow";
+import { installFx } from "./ui/fx";
 import { audio, installAudio, type Mood } from "./audio/engine";
 import { CosmicBackground } from "./scene/background";
 import { mainMenu } from "./ui/screens/mainMenu";
@@ -56,6 +59,7 @@ router.register("debrief", debriefScreen);
 router.navigate("menu");
 startNetFlow();
 installAudio();
+installFx();
 router.onNavigate((id) => {
   const mood: Mood = id === "map" ? "map" : id === "hangar" || id === "briefing" ? "hangar" : id === "control" ? "flight" : id === "debrief" ? "debrief" : "menu";
   audio.setMood(mood);

@@ -6,7 +6,7 @@
   border: 1px solid var(--border);
   border-radius: 6px;
   overflow: hidden;
-  background: #07070f;
+  background: rgba(7, 7, 15, 0.18);
 }
 .h-view {
   position: absolute;

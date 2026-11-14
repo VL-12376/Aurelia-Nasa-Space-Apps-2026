@@ -4,39 +4,63 @@ import { store } from "../../core/store";
 import { BUDGET_CATEGORIES, formatUsd } from "../../budget/budget";
 import { SEASONS } from "../../campaign/seasons";
 import { reputationTier, seasonProgress } from "../../campaign/reputation";
+import { ROLES } from "../../crew/roles";
 import { DEMO_ACTIVE_MISSIONS, DEMO_ACTIVE_RESEARCH, DEMO_ACTIVITY } from "../../demo/demoData";
 import { MISSIONS, missionsForSeason } from "../../missions/missions";
 import { TECHS } from "../../research/tech";
 import { createEarthMoonWidget } from "../../scene/earthMoon";
 import { gameShell } from "../layout";
 import { session } from "../session";
+import { avatar } from "../crew";
+import { countUp } from "../fx";
+
+const FACTS = [
+  "LOW EARTH ORBIT SPEED ≈ 7.8 km/s",
+  "ORBIT PERIOD AT 400 km ≈ 92 min",
+  "GEOSTATIONARY ORBIT ≈ 35,786 km",
+  "EARTH ESCAPE VELOCITY ≈ 11.2 km/s",
+  "EARTH–MOON DISTANCE ≈ 384,400 km",
+  "RADIO DELAY TO THE MOON ≈ 1.3 s",
+  "SOLAR CONSTANT AT EARTH ≈ 1,361 W/m²",
+  "SURFACE GRAVITY ≈ 9.81 m/s²",
+];
+
+function reticle(): SVGElement {
+  const ns = "http://www.w3.org/2000/svg";
+  const el = (tag: string, attrs: Record<string, string>) => {
+    const n = document.createElementNS(ns, tag);
+    for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+    return n;
+  };
+  const svg = el("svg", { viewBox: "-100 -100 200 200", "aria-hidden": "true" }) as SVGElement;
+  const a = el("g", { class: "ret-a", fill: "none", stroke: "#b8a6e8", "stroke-width": "0.35" });
+  a.append(el("circle", { r: "96", "stroke-dasharray": "2 3" }), el("circle", { r: "88", "stroke-opacity": "0.5" }));
+  for (let i = 0; i < 72; i++) {
+    const ang = (i / 72) * Math.PI * 2;
+    const len = i % 6 === 0 ? 5 : 2.2;
+    a.append(el("line", { x1: String(Math.cos(ang) * 96), y1: String(Math.sin(ang) * 96), x2: String(Math.cos(ang) * (96 - len)), y2: String(Math.sin(ang) * (96 - len)) }));
+  }
+  const b = el("g", { class: "ret-b", fill: "none", stroke: "#7fe0ff", "stroke-width": "0.4" });
+  b.append(el("path", { d: "M -70 0 A 70 70 0 0 1 0 -70", "stroke-opacity": "0.8" }), el("path", { d: "M 70 0 A 70 70 0 0 1 0 70", "stroke-opacity": "0.8" }), el("circle", { r: "62", "stroke-dasharray": "1 4", "stroke-opacity": "0.5" }));
+  svg.append(a, b);
+  return svg;
+}
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const DONUT_COLORS = ["#b8a6e8", "#7563b5", "#d8d9e0", "#8f9de8", "#a07fd6", "#6f7fb8", "#c9b8f0"];
 
-function bar(pct: number, label: string): HTMLElement {
+function bar(pct: number, label: string, tone = ""): HTMLElement {
   const p = Math.max(0, Math.min(100, pct));
-  return h("div", { class: "bar", role: "progressbar", "aria-valuenow": Math.round(p), "aria-valuemin": 0, "aria-valuemax": 100, "aria-label": label }, h("span", { style: { width: `${p}%` } }));
-}
-
-function stat(label: string, value: string, sub: string, pct?: number): HTMLElement {
-  return h(
-    "div",
-    { class: "panel hud stat" },
-    h("span", { class: "label" }, label),
-    h("span", { class: "value" }, value),
-    pct !== undefined ? bar(pct, label) : null,
-    h("span", { class: "muted mono", style: { fontSize: "0.72rem" } }, sub),
-  );
+  return h("div", { class: `bar ${tone}`, role: "progressbar", "aria-valuenow": Math.round(p), "aria-valuemin": 0, "aria-valuemax": 100, "aria-label": label }, h("span", { style: { width: `${p}%` } }));
 }
 
 function demoBadge(): HTMLElement {
   return h("span", { class: "demo-badge", title: "Sample data. Not part of your saved game." }, "Demo data");
 }
 
-function svgText(x: string, y: string, cls: string, text: string): SVGElement {
+function svgText(y: string, cls: string, text: string): SVGElement {
   const t = document.createElementNS(SVG_NS, "text");
-  t.setAttribute("x", x);
+  t.setAttribute("x", "60");
   t.setAttribute("y", y);
   t.setAttribute("text-anchor", "middle");
   t.setAttribute("class", cls);
@@ -69,13 +93,11 @@ function donut(planned: number[], centerTop: string, centerBottom: string): SVGE
     svg.append(seg);
     offset += len;
   });
-  svg.append(svgText("60", "58", "donut-top", centerTop), svgText("60", "73", "donut-bottom", centerBottom));
+  svg.append(svgText("58", "donut-top", centerTop), svgText("73", "donut-bottom", centerBottom));
   return svg;
 }
 
-function navCard(title: string, sub: string, status: string, onclick: () => void): HTMLElement {
-  return h("button", { class: "panel hud card nav-card", onclick }, h("span", { class: "nc-title" }, title), h("span", { class: "muted" }, sub), h("span", { class: "tag" }, status));
-}
+const fmtDv = (v: number) => `${(v / 1000).toFixed(1)} km/s`;
 
 export function headquarters(): HTMLElement {
   const game = store.get().game;
@@ -90,24 +112,18 @@ export function headquarters(): HTMLElement {
   const available = missionsForSeason(game.season).filter((m) => !game.completedMissions.includes(m.id));
   const tier = reputationTier(game.reputation);
   const spentTotal = BUDGET_CATEGORIES.reduce((sum, c) => sum + game.allocation[c.id].spent, 0);
-  const spentPct = game.annualBudget ? (spentTotal / game.annualBudget) * 100 : 0;
   const repPct = tier.next ? ((game.reputation - tier.min) / (tier.next - tier.min)) * 100 : 100;
-
   const seasonTechs = TECHS.filter((t) => t.season <= game.season);
-  const nextTechs = seasonTechs.filter((t) => !game.researchedTech.includes(t.id) && t.requires.every((r) => game.researchedTech.includes(r))).slice(0, 3);
+  const nextTechs = seasonTechs.filter((t) => !game.researchedTech.includes(t.id) && t.requires.every((r) => game.researchedTech.includes(r))).slice(0, 4);
+  const last = game.lastFlight;
+  const lastMission = last ? MISSIONS.find((m) => m.id === last.missionId) : undefined;
 
   // The globe is built once so toggling demo data does not restart the WebGL scene.
-  const globeHost = h("div", { class: "globe" });
-  const globePanel = h(
-    "div",
-    { class: "panel hud globe-panel" },
-    globeHost,
-    h("div", { class: "globe-caption mono" }, h("span", null, "EARTH–MOON SYSTEM"), h("span", { class: "muted" }, "384,400 km mean distance · simplified view")),
-  );
+  const globeHost = h("div", { class: "hq3-globe" });
   const widget = createEarthMoonWidget(globeHost);
   router.onLeave(() => widget.dispose());
 
-  const clock = h("span", { class: "mono clock" }, "");
+  const clock = h("span", { class: "mono" }, "");
   const tick = () => {
     clock.textContent = `${new Date().toISOString().slice(11, 19)} UTC`;
   };
@@ -115,166 +131,143 @@ export function headquarters(): HTMLElement {
   const timer = window.setInterval(tick, 1000);
   router.onLeave(() => clearInterval(timer));
 
-  const body = h("div", { class: "grid" });
+  const left = h("aside", { class: "hq3-col hq3-left", "aria-label": "Mission status" });
+  const right = h("aside", { class: "hq3-col hq3-right", "aria-label": "Agency" });
+  const topChips = h("div", { class: "hq3-chips" });
+  const headline = h("div", { class: "hq3-title" });
+  const bottom = h("div", { class: "hq3-bottom" });
+
+  const card = (title: string, ...children: (Node | null)[]) => h("section", { class: "hq3-card" }, h("h4", null, title), ...children.filter((c): c is Node => c !== null));
+
+  const chip = (label: string, num: number, fmt: (n: number) => string, sub: string, pct?: number) => {
+    const value = h("span", { class: "hq3-chip-v mono" }, fmt(num));
+    countUp(value, num, fmt);
+    return h("div", { class: "hq3-chip" }, h("span", { class: "hq3-chip-l" }, label), value, pct !== undefined ? bar(pct, label) : null, h("span", { class: "hq3-chip-s mono" }, sub));
+  };
 
   const render = () => {
     const demo = session.showDemo;
     const activeMissions = demo ? DEMO_ACTIVE_MISSIONS : game.activeMissions;
     const research = demo ? DEMO_ACTIVE_RESEARCH : game.activeResearch;
     const researchTech = research ? TECHS.find((t) => t.id === research.techId) : undefined;
+    widget.setCraft(Math.max(1, activeMissions.length + game.fleet.length));
 
-    const toggle = h(
-      "button",
-      {
-        class: "btn ghost small",
-        "aria-pressed": String(demo),
-        title: "Preview the dashboard with invented sample data. Your saved game is not changed.",
-        onclick: () => {
-          session.showDemo = !session.showDemo;
-          render();
-        },
-      },
-      `Demo data: ${demo ? "on" : "off"}`,
+    headline.replaceChildren(
+      h("h2", null, `${game.agencyName} Headquarters`),
+      h("p", { class: "muted" }, `Season ${season.id}: ${season.name} · Agency year ${game.year}`),
+      h("div", { class: "hq3-status mono" }, h("span", { class: "led" }), h("span", null, "SYSTEMS NOMINAL"), clock),
+      h("button", { class: "btn ghost small", "aria-pressed": String(demo), title: "Preview the dashboard with invented sample data. Your saved game is not changed.", onclick: () => { session.showDemo = !session.showDemo; render(); } }, `Demo data: ${demo ? "on" : "off"}`),
     );
 
-    const header = h(
-      "div",
-      { class: "hq-head" },
-      h("div", null, h("h2", null, `${game.agencyName} Headquarters`), h("p", { class: "muted" }, `Season ${season.id}: ${season.name} · Agency year ${game.year}`)),
-      h("div", { class: "hq-status mono" }, h("span", { class: "led" }), h("span", null, "SYSTEMS NOMINAL"), clock, toggle),
+    const int = (n: number) => String(Math.round(n));
+    topChips.replaceChildren(
+      chip("Available funds", game.funds, (n) => formatUsd(n), `${formatUsd(spentTotal)} committed`, game.annualBudget ? (game.funds / game.annualBudget) * 100 : 0),
+      chip("Reputation", game.reputation, int, tier.name, repPct),
+      chip("Research points", game.researchPoints, int, `${game.researchedTech.length}/${seasonTechs.length} techs`),
+      chip("Spacecraft ready", game.fleet.length, int, `${game.flights} flown`),
     );
 
-    const banner = demo
-      ? h("div", { class: "notice demo-note" }, "Demo data is on. Dashed panels show invented sample data for preview. Funds, budget, reputation, season and research points always come from your saved game and are not affected.")
-      : null;
+    /* ----- left: mission status ----- */
+    const missionRows = activeMissions.map((m) => {
+      const def = MISSIONS.find((d) => d.id === m.missionId);
+      return h(
+        "li",
+        null,
+        h("button", { class: "row-btn", onclick: () => { session.selectedMissionId = m.missionId; router.navigate("briefing"); } }, h("div", { class: "mr-top" }, h("span", null, def?.name ?? m.missionId), h("span", { class: m.status === "nominal" ? "tag" : "tag warn" }, m.status)), h("div", { class: "muted mono small" }, `${m.craftName} · ${m.phase}`), bar(m.progress * 100, `${def?.name ?? m.missionId} progress`)),
+      );
+    });
 
-    const stats = h(
-      "div",
-      { class: "grid cols-4" },
-      stat("Available funds", formatUsd(game.funds), `${formatUsd(spentTotal)} committed this year`, 100 - spentPct),
-      stat("Annual budget", formatUsd(game.annualBudget), `Year ${game.year} allocation`),
-      stat("Agency reputation", String(game.reputation), tier.next ? `${tier.name} · next tier at ${tier.next}` : `${tier.name} · top tier`, repPct),
-      stat("Research points", String(game.researchPoints), `${game.researchedTech.length} of ${seasonTechs.length} season techs done`),
+    left.replaceChildren(
+      card(
+        demo ? "Mission status · demo" : "Mission status",
+        demo ? demoBadge() : null,
+        missionRows.length ? h("ul", { class: "hq3-list" }, ...missionRows) : h("p", { class: "muted small" }, "No missions in flight. Build a spacecraft, then launch from a briefing."),
+        last && lastMission
+          ? h("div", { class: `hq3-last ${last.outcome.result}` }, h("span", { class: "mono small muted" }, "LAST FLIGHT"), h("strong", null, `${lastMission.name}: ${last.outcome.headline}`), h("span", { class: "mono small" }, `${last.craftName} · ${last.outcome.fundsEarned > 0 ? `+${formatUsd(last.outcome.fundsEarned)}` : "no funding"} · rep ${last.outcome.reputation >= 0 ? "+" : ""}${last.outcome.reputation}`), h("button", { class: "btn ghost small", onclick: () => router.navigate("debrief") }, "Open debrief"))
+          : null,
+      ),
+      card(
+        "Hangar bay",
+        game.fleet.length
+          ? h("ul", { class: "hq3-list" }, ...game.fleet.map((c) => h("li", { class: "hq3-row" }, h("span", null, c.name), h("span", { class: "mono muted small" }, `${fmtDv(c.deltaV)} · ${Math.round(c.payloadKg)} kg`))))
+          : h("p", { class: "muted small" }, "Nothing built yet."),
+        h("button", { class: "btn small", onclick: () => router.navigate("hangar") }, game.fleet.length ? "Open hangar" : "Design a spacecraft"),
+      ),
+      card(
+        `Season ${season.id} progress`,
+        bar(seasonPct, "Season mission progress"),
+        h("p", { class: "muted mono small" }, `${Math.round(seasonPct)}% complete (${seasonDone}/${seasonMissions.length} missions)`),
+        h("ul", { class: "hq3-goals" }, ...season.goals.map((g) => h("li", null, g))),
+      ),
+      ...(demo ? [card("Agency activity · demo", demoBadge(), h("ul", { class: "hq3-goals" }, ...DEMO_ACTIVITY.map((a) => h("li", null, a))))] : []),
     );
 
-    const seasonPanel = h(
-      "div",
-      { class: "panel hud" },
-      h("h3", null, "Campaign season"),
-      h(
-        "ol",
-        { class: "timeline", "aria-label": "Campaign seasons" },
-        ...SEASONS.map((s) =>
-          h(
-            "li",
-            { class: s.id < game.season ? "done" : s.id === game.season ? "current" : "", "aria-current": s.id === game.season ? "step" : null },
-            h("span", { class: "node" }),
-            h("span", { class: "mono t-num" }, `S${s.id}`),
-            h("span", { class: "t-name" }, s.name),
-          ),
+    /* ----- right: agency ----- */
+    const planned = BUDGET_CATEGORIES.map((c) => game.allocation[c.id].planned);
+    right.replaceChildren(
+      card(
+        "Annual budget",
+        h(
+          "div",
+          { class: "hq3-budget" },
+          donut(planned, formatUsd(game.annualBudget), "ANNUAL"),
+          h("ul", { class: "legend" }, ...BUDGET_CATEGORIES.map((c, i) => h("li", null, h("span", { class: "swatch", style: { background: DONUT_COLORS[i % DONUT_COLORS.length] } }), h("span", { class: "lg-name" }, c.label), h("span", { class: "mono" }, formatUsd(planned[i]))))),
         ),
       ),
-      h("div", { style: { marginTop: "14px" } }, bar(seasonPct, "Season mission progress"), h("p", { class: "muted mono", style: { fontSize: "0.72rem", marginTop: "6px" } }, `${Math.round(seasonPct)}% of Season ${season.id} missions complete (${seasonDone}/${seasonMissions.length})`)),
-      h("ul", { class: "list goals" }, ...season.goals.map((g) => h("li", null, g))),
+      card(
+        "Reputation",
+        h("div", { class: "kv" }, h("span", { class: "k" }, tier.name), h("span", { class: "v mono" }, String(game.reputation))),
+        bar(repPct, "Progress to next reputation tier"),
+        h("p", { class: "muted mono small" }, tier.next ? `Next tier at ${tier.next}` : "Top tier reached"),
+      ),
+      card(
+        demo ? "Technology · demo" : "Technology",
+        demo ? demoBadge() : null,
+        researchTech && research
+          ? h("div", { class: "hq3-tech" }, h("strong", null, researchTech.name), h("span", { class: "muted small" }, researchTech.description), bar((research.progress / researchTech.cost) * 100, `${researchTech.name} progress`), h("span", { class: "muted mono small" }, `${research.progress} / ${researchTech.cost} RP`))
+          : null,
+        h("h5", null, "Ready to research"),
+        nextTechs.length ? h("ul", { class: "hq3-list" }, ...nextTechs.map((t) => h("li", { class: "hq3-row" }, h("span", null, t.name), h("span", { class: game.researchPoints >= t.cost ? "tag" : "tag warn" }, `${t.cost} RP`)))) : h("p", { class: "muted small" }, "Nothing available right now."),
+        h("button", { class: "btn ghost small", onclick: () => router.navigate("research") }, "Open research"),
+      ),
     );
 
-    const planned = BUDGET_CATEGORIES.map((c) => game.allocation[c.id].planned);
-    const budgetPanel = h(
-      "div",
-      { class: "panel hud" },
-      h("h3", null, "Annual budget allocation"),
+    /* ----- bottom of the globe: crew and shortcuts ----- */
+    const mine = game.role;
+    bottom.replaceChildren(
       h(
         "div",
-        { class: "budget-wrap" },
-        donut(planned, formatUsd(game.annualBudget), "ANNUAL"),
-        h(
-          "ul",
-          { class: "legend" },
-          ...BUDGET_CATEGORIES.map((c, i) =>
-            h("li", null, h("span", { class: "swatch", style: { background: DONUT_COLORS[i % DONUT_COLORS.length] } }), h("span", { class: "lg-name" }, c.label), h("span", { class: "mono" }, formatUsd(planned[i]))),
-          ),
-        ),
+        { class: "hq3-crew", "aria-label": "Crew" },
+        ...ROLES.map((r) => {
+          const me = mine === null || mine === "all" || mine === r.id;
+          return h("div", { class: `hq3-face${me ? " me" : ""}`, style: { "--rc": r.color }, title: `${r.name}, ${r.title}` }, avatar(r, me), h("span", { class: "mono" }, me ? "YOU" : "AI"));
+        }),
       ),
-    );
-
-    const missionsPanel = h(
-      "div",
-      { class: `panel hud${demo ? " demo" : ""}` },
-      h("h3", null, "Active missions", demo ? demoBadge() : null),
-      activeMissions.length
-        ? h(
-            "ul",
-            { class: "list" },
-            ...activeMissions.map((m) => {
-              const def = MISSIONS.find((d) => d.id === m.missionId);
-              return h(
-                "li",
-                { class: "mission-row" },
-                h(
-                  "button",
-                  {
-                    class: "row-btn",
-                    onclick: () => {
-                      session.selectedMissionId = m.missionId;
-                      router.navigate("briefing");
-                    },
-                  },
-                  h("div", { class: "mr-top" }, h("span", null, def?.name ?? m.missionId), h("span", { class: m.status === "nominal" ? "tag" : "tag warn" }, m.status)),
-                  h("div", { class: "muted mono", style: { fontSize: "0.72rem" } }, `${m.craftName} · ${m.phase}`),
-                  bar(m.progress * 100, `${def?.name ?? m.missionId} progress`),
-                ),
-              );
-            }),
-          )
-        : h("p", { class: "muted" }, "No missions in flight. Build a spacecraft in the Hangar, then launch from a mission briefing."),
-    );
-
-    const researchPanel = h(
-      "div",
-      { class: `panel hud${demo ? " demo" : ""}` },
-      h("h3", null, "Technology development", demo ? demoBadge() : null),
-      researchTech && research
-        ? h(
-            "div",
-            { class: "grid", style: { gap: "6px", marginBottom: "12px" } },
-            h("div", null, h("strong", null, researchTech.name), h("span", { class: "muted" }, ` · ${researchTech.description}`)),
-            bar((research.progress / researchTech.cost) * 100, `${researchTech.name} research progress`),
-            h("span", { class: "muted mono", style: { fontSize: "0.72rem" } }, `${research.progress} / ${researchTech.cost} research points`),
-          )
-        : h("p", { class: "muted", style: { marginBottom: "12px" } }, "No research in progress."),
-      h("h3", { style: { margin: "4px 0 8px" } }, "Ready to research"),
-      nextTechs.length
-        ? h("ul", { class: "list" }, ...nextTechs.map((t) => h("li", null, h("span", null, t.name), h("span", { class: "tag warn" }, `${t.cost} RP`))))
-        : h("p", { class: "muted" }, "Nothing available right now."),
-    );
-
-    const activity = demo
-      ? h("div", { class: "panel hud demo" }, h("h3", null, "Agency activity", demoBadge()), h("ul", { class: "list" }, ...DEMO_ACTIVITY.map((a) => h("li", null, a))))
-      : null;
-
-    const nav = h(
-      "div",
-      { class: "grid cols-4" },
-      navCard("Spacecraft Hangar", "Design and assemble vehicles", "Phase 5", () => router.navigate("hangar")),
-      navCard("Solar System Map", "Choose destinations and routes", "Phase 4", () => router.navigate("map")),
-      navCard("Research & Technology", "Technology tree", "Read-only", () => router.navigate("research")),
-      navCard("Mission Briefing", available[0] ? `Review ${available[0].name}` : "No missions available", "Read-only", () => {
-        session.selectedMissionId = session.selectedMissionId ?? available[0]?.id ?? null;
-        router.navigate("briefing");
-      }),
-    );
-
-    body.replaceChildren(
-      header,
-      ...(banner ? [banner] : []),
-      stats,
-      h("div", { class: "grid cols-2 hq-mid" }, globePanel, seasonPanel),
-      h("div", { class: "grid cols-2" }, budgetPanel, h("div", { class: "grid" }, missionsPanel, ...(activity ? [activity] : []))),
-      researchPanel,
-      nav,
+      h(
+        "div",
+        { class: "hq3-actions" },
+        h("button", { class: "btn small", onclick: () => { session.selectedMissionId = session.selectedMissionId ?? available[0]?.id ?? null; router.navigate("briefing"); } }, "Missions"),
+        h("button", { class: "btn small ghost", onclick: () => router.navigate("hangar") }, "Hangar"),
+        h("button", { class: "btn small ghost", onclick: () => router.navigate("map") }, "Solar system"),
+      ),
     );
   };
   render();
 
-  return gameShell("hq", body);
+  const centre = h(
+    "section",
+    { class: "hq3-centre", "aria-label": "Earth and Moon" },
+    globeHost,
+    h("div", { class: "hq3-reticle" }, reticle()),
+    h("div", { class: "hq3-overlay top" }, headline, topChips),
+    h(
+      "div",
+      { class: "hq3-overlay bottom" },
+      h("div", { class: "hq3-ticker mono", "aria-label": "Reference values" }, h("span", null, `${FACTS.join("   ◆   ")}   ◆   ${FACTS.join("   ◆   ")}   ◆   `)),
+      h("div", { class: "hq3-caption mono" }, h("span", null, "EARTH–MOON SYSTEM"), h("span", { class: "muted" }, "Procedural model, not satellite imagery · orbits are illustrative")),
+      bottom,
+    ),
+  );
+
+  return gameShell("hq", h("div", { class: "hq3" }, left, centre, right), { fill: true });
 }

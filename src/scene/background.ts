@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { store, type Settings } from "../core/store";
 
-const DENSITY: Record<Settings["starDensity"], number> = { low: 900, medium: 2200, high: 4500 };
+const DENSITY: Record<Settings["starDensity"], number> = { low: 1400, medium: 3200, high: 6500 };
 
 /* ---------------------------------------------------------------- */
 /* Nebula: domain-warped fractal clouds, a faint galactic band, dust */
@@ -35,6 +35,18 @@ const NEBULA_FRAG = /* glsl */ `
     return v;
   }
 
+  float starLayer(vec2 p, float scale, float thresh, float radius) {
+    vec2 g = p * scale;
+    vec2 id = floor(g);
+    vec2 f = fract(g) - 0.5;
+    float h = hash(id);
+    if (h < thresh) return 0.0;
+    vec2 off = (vec2(hash(id + 1.7), hash(id + 8.3)) - 0.5) * 0.62;
+    float d = length(f - off);
+    float tw = 0.65 + 0.35 * sin(uTime * (0.8 + h * 3.0) + h * 50.0);
+    return smoothstep(radius, 0.0, d) * tw * (0.45 + 0.55 * fract(h * 91.7));
+  }
+
   void main() {
     vec2 uv = (vUv - 0.5) * vec2(uAspect, 1.0) * 1.7 + uMouse * 0.07;
     float t = uTime * 0.009;
@@ -62,11 +74,10 @@ const NEBULA_FRAG = /* glsl */ `
     col += lavender * band * (0.04 + 0.16 * lane) * 0.8;
     col *= 1.0 - band * smoothstep(0.55, 0.9, fbm(uv * 6.0 + 4.0)) * 0.35;
 
-    // Fine background stars that shimmer.
-    vec2 g = floor((vUv * vec2(uAspect, 1.0)) * 520.0);
-    float s = hash(g);
-    float spark = step(0.9965 - band * 0.012, s) * (0.45 + 0.55 * sin(uTime * (1.2 + s * 4.0) + s * 60.0));
-    col += vec3(0.9, 0.9, 1.0) * spark * 0.55;
+    // Stars scattered over the whole screen at three sizes. Each cell holds at most one star at a jittered position, so there is no visible grid.
+    vec2 sp = vUv * vec2(uAspect, 1.0);
+    float stars = starLayer(sp, 70.0, 0.80, 0.16) + starLayer(sp + 3.1, 140.0, 0.86, 0.12) + starLayer(sp + 7.7, 260.0, 0.90, 0.10);
+    col += vec3(0.85, 0.86, 1.0) * stars * 0.85;
 
     float vig = smoothstep(1.25, 0.2, length(vUv - 0.5) * 1.6);
     gl_FragColor = vec4(col * (0.55 + 0.45 * vig), 1.0);

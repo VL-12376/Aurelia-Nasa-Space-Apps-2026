@@ -1,15 +1,15 @@
 import { h } from "../../core/dom";
 import { router } from "../../core/router";
-import { store } from "../../core/store";
 import { SEASONS } from "../../campaign/seasons";
+import { session } from "../session";
 
 export function modeSelect(): HTMLElement {
   let selectedSeason = 1;
   const seasonButtons: HTMLButtonElement[] = [];
 
   const startSingle = () => {
-    store.startNewGame("single", selectedSeason);
-    router.navigate("hq");
+    session.pendingSeason = selectedSeason;
+    router.navigate("roles");
   };
 
   const seasonCards = SEASONS.map((s) => {
@@ -55,9 +55,8 @@ export function modeSelect(): HTMLElement {
           "div",
           { class: "panel mode-card" },
           h("h2", null, "Cooperative multiplayer"),
-          h("p", { class: "muted" }, "Up to four players share one mission, each in a specialist role."),
-          h("span", { class: "tag warn" }, "Server not built yet"),
-          h("button", { class: "btn ghost", onclick: () => router.navigate("multiplayer") }, "View roles"),
+          h("p", { class: "muted" }, "Up to four players share one spacecraft and one mission, each in a specialist role. Needs the multiplayer server (npm run server)."),
+          h("button", { class: "btn ghost", onclick: () => router.navigate("multiplayer") }, "Create or join a room"),
         ),
       ),
       h("div", { style: { height: "24px" } }),

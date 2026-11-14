@@ -2,6 +2,8 @@ import gsap from "gsap";
 import { h } from "../core/dom";
 import { router, type ScreenId } from "../core/router";
 import { store } from "../core/store";
+import { ROLE_BY_ID } from "../crew/roles";
+import { mp } from "../net/session";
 
 const NAV: { id: ScreenId; label: string }[] = [
   { id: "hq", label: "Headquarters" },
@@ -12,15 +14,26 @@ const NAV: { id: ScreenId; label: string }[] = [
   { id: "profile", label: "Profile" },
 ];
 
+/** In a shared room the campaign lives on the server, so only the screens that read it are offered. */
+const MP_NAV: ScreenId[] = ["map", "briefing", "hangar"];
+
 /** Wraps a screen's content with the in-game top bar and navigation. */
 export function gameShell(active: ScreenId, content: HTMLElement, opts: { fill?: boolean } = {}): HTMLElement {
+  const shared = mp.active;
   const nav = h(
     "nav",
     { class: "nav", "aria-label": "Game navigation" },
-    ...NAV.map((item) =>
+    ...NAV.filter((item) => !shared || MP_NAV.includes(item.id)).map((item) =>
       h("button", { class: item.id === active ? "active" : "", "aria-current": item.id === active ? "page" : null, onclick: () => router.navigate(item.id) }, item.label),
     ),
   );
+  const me = shared ? mp.role : store.get().game?.role ?? null;
+  const roleDef = me && me !== "all" ? ROLE_BY_ID[me] : null;
+  const chip = shared
+    ? h("span", { class: "room-chip mono", title: "Shared mission session" }, `ROOM ${mp.room!.code}`, roleDef ? h("img", { src: roleDef.portrait, alt: "" }) : null, roleDef ? roleDef.title : "")
+    : roleDef
+      ? h("span", { class: "room-chip mono", title: "Your role" }, h("img", { src: roleDef.portrait, alt: "" }), roleDef.title)
+      : null;
 
   const clock = h("span", { class: "mono clock" }, "");
   const tick = () => {
@@ -41,9 +54,10 @@ export function gameShell(active: ScreenId, content: HTMLElement, opts: { fill?:
         { class: "topbar" },
         h("span", { class: "brand" }, "AURELIA"),
         nav,
+        chip,
         h("span", { class: "live mono" }, h("span", { class: "led" }), "LIVE"),
         clock,
-        h("button", { class: "btn ghost small", onclick: () => router.navigate("menu") }, "Menu"),
+        h("button", { class: "btn ghost small", onclick: () => { if (mp.active) mp.leave(); router.navigate("menu"); } }, shared ? "Leave" : "Menu"),
       ),
       content,
     ),

@@ -45,7 +45,7 @@ export function multiplayerScreen(): HTMLElement {
     return h(
       "div",
       { class: "grid" },
-      h("div", { class: "mp-hero" }, h("img", { src: "/crew/crew-banner.jpg", alt: "The AURELIA crew around the holographic mission table" }), h("div", { class: "mp-hero-text" }, h("h2", null, "Fly it together"), h("p", null, "Up to four people share one spacecraft and one mission. Each plays a specialist: the Aerospace Engineer, Propulsion Engineer, Mission Controller or Science and Systems Officer. Anyone not playing is covered by AI crew."))),
+      h("div", { class: "mp-hero" }, h("img", { src: `${import.meta.env.BASE_URL}crew/crew-banner.jpg`, alt: "The AURELIA crew around the holographic mission table" }), h("div", { class: "mp-hero-text" }, h("h2", null, "Fly it together"), h("p", null, "Up to four people share one spacecraft and one mission. Each plays a specialist: the Aerospace Engineer, Propulsion Engineer, Mission Controller or Science and Systems Officer. Anyone not playing is covered by AI crew."))),
       h(
         "div",
         { class: "grid cols-2" },

@@ -1,5 +1,8 @@
 import type { Part, PartCategory } from "../spacecraft/parts";
 
+/** Vite sets BASE_URL in the browser build; the Node server has no import.meta.env, so fall back to the root. */
+const BASE: string = import.meta.env?.BASE_URL ?? "/";
+
 export type RoleId = "aerospace" | "propulsion" | "controller" | "science";
 /** "all" means the player runs every role and no AI crew is used. */
 export type RoleChoice = RoleId | "all";
@@ -28,7 +31,7 @@ export const ROLES: readonly RoleDef[] = [
     id: "aerospace",
     title: "Aerospace Engineer",
     name: "Dr. Mira Okafor",
-    portrait: "/crew/mira.jpg",
+    portrait: `${BASE}crew/mira.jpg`,
     tagline: "Strong, light and ready to fly.",
     bio: "Mira spent twelve years designing launch-vehicle structures. She keeps the bus, the landing gear and the heat shield honest, because every kilogram she saves is delta-v for everyone else.",
     color: "#b8a6e8",
@@ -43,7 +46,7 @@ export const ROLES: readonly RoleDef[] = [
     id: "propulsion",
     title: "Propulsion Engineer",
     name: "Kenji Arai",
-    portrait: "/crew/kenji.jpg",
+    portrait: `${BASE}crew/kenji.jpg`,
     tagline: "Every second of thrust counts.",
     bio: "Kenji has tested engines on the stand for two decades. He lives by the rocket equation, and he will happily argue for one more tank or a second engine on the booster.",
     color: "#ef9a6a",
@@ -57,7 +60,7 @@ export const ROLES: readonly RoleDef[] = [
     id: "controller",
     title: "Mission Controller",
     name: "Elena Vasquez",
-    portrait: "/crew/elena.jpg",
+    portrait: `${BASE}crew/elena.jpg`,
     tagline: "Calm voice. Clear plan.",
     bio: "Elena has called launch, orbit and landing for a dozen missions. She chooses the mission, signs off the launch, controls the pace of the flight and decides course corrections and landing sites.",
     color: "#7fc8ff",
@@ -72,7 +75,7 @@ export const ROLES: readonly RoleDef[] = [
     id: "science",
     title: "Science and Systems Officer",
     name: "Dr. Arjun Rao",
-    portrait: "/crew/arjun.jpg",
+    portrait: `${BASE}crew/arjun.jpg`,
     tagline: "Power, link and discovery.",
     bio: "Arjun is a planetary scientist turned systems engineer. He fits the instruments, panels, batteries and antennas, and he protects the science return when the spacecraft gets into trouble.",
     color: "#8fd6b0",

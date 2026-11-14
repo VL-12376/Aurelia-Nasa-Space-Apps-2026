@@ -7,7 +7,7 @@ export function mainMenu(): HTMLElement {
   return h(
     "main",
     { class: "screen menu" },
-    h("div", { class: "logo-frame" }, h("img", { src: "/aurelia-logo.jpg", alt: "AURELIA logo: a silver stylised A emblem with the tagline Embarking on a Radiant Tomorrow." })),
+    h("div", { class: "logo-frame" }, h("img", { src: `${import.meta.env.BASE_URL}aurelia-logo.jpg`, alt: "AURELIA logo: a silver stylised A emblem with the tagline Embarking on a Radiant Tomorrow." })),
     h(
       "div",
       { class: "actions" },

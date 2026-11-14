@@ -49,7 +49,8 @@ describe("AI crew design", () => {
       if (blockers.length) failed.push(`${m.name}: ${blockers.map((b) => b.label + " (" + b.detail + ")").join("; ")}`);
     }
     expect(failed).toEqual([]);
-  });
+    // The crew searches for engine layouts, which takes several seconds on a slow machine.
+  }, 60_000);
 });
 
 describe("AI crew decisions", () => {

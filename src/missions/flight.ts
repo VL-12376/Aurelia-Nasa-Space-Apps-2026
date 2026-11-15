@@ -7,6 +7,7 @@ import { DIFFICULTY_BY_ID, type Difficulty, type DifficultyDef } from "../core/p
 import type { MissionDef } from "./missions";
 import { kinematics, lightDelaySeconds, sunFactor, type Frame, type Kin, type KinContext } from "./kinematics";
 import { phasesFor, planDesign, resolvePlan, type MissionPlan, type ResolvedPlan } from "./plan";
+import type { ReplayInput } from "./replay";
 import type { BurnPhase, Phase, ViewKind } from "./profiles";
 
 /** Everything a flight needs beyond the design and the mission: the player's plan, difficulty and live conditions. */
@@ -618,9 +619,15 @@ export class Flight {
   private readonly ctx: FlightContext;
   private readonly diff: DifficultyDef;
   private readonly requiredDv: number;
+  private readonly seed: number;
+  private readonly input: Design;
+  /** Every decision made, in order. With the seed and plan this is enough for a server to replay the flight exactly. */
+  readonly decisions: { eventId: string; option: string; skill?: number }[] = [];
 
   constructor(design: Design, mission: MissionDef, seed: number, ctx: FlightContext = {}) {
     this.ctx = ctx;
+    this.seed = seed;
+    this.input = design;
     this.diff = DIFFICULTY_BY_ID[ctx.difficulty ?? "engineer"];
     this.plan = resolvePlan(mission, ctx.plan);
     this.design = planDesign(design, this.plan);
@@ -653,6 +660,18 @@ export class Flight {
   /** Result of the mini-game the player just played, 0 (poor) to 1 (perfect). */
   get skill(): number {
     return this.skillNow;
+  }
+  /** Everything needed to replay this exact flight on a server. */
+  replayInput(): ReplayInput {
+    return {
+      missionId: this.mission.id,
+      design: { name: this.input.name, parts: this.input.parts.map((r) => ({ partId: r.partId, target: r.target })) },
+      seed: this.seed,
+      plan: this.ctx.plan,
+      difficulty: this.ctx.difficulty ?? "engineer",
+      solarActivity: this.ctx.solarActivity,
+      decisions: this.decisions.map((d) => ({ ...d })),
+    };
   }
   /** Whether the radio link is quick enough to fly something by hand from the ground. */
   manualAllowed(): string | undefined {
@@ -946,6 +965,7 @@ export class Flight {
     const opt = this.pending.options.find((o) => o.id === optionId);
     if (!opt || opt.disabled) return;
     this.skillNow = Math.min(1, Math.max(0, Number.isFinite(skill) ? (skill as number) : 0.5));
+    this.decisions.push({ eventId: this.pending.eventId, option: optionId, ...(Number.isFinite(skill) ? { skill: this.skillNow } : {}) });
     const title = this.pending.title;
     const rtt = this.rttS();
     const res = def.resolve(optionId, this, this.rng);

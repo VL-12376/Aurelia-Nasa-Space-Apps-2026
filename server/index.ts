@@ -5,13 +5,14 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { DEFAULT_PORT, type ClientMsg, type ServerMsg } from "../src/net/protocol";
 import { Room } from "./room";
 import { spaceNow } from "./live";
-import { RateLimiter, ScoreStore, MAX_LIST, validateSubmission, type RemoteStore } from "./scores";
+import { RateLimiter, ScoreStore, MAX_LIST, NAME_MAX, cleanText, type RemoteStore } from "./scores";
+import { replayFlight, validateReplay } from "../src/missions/replay";
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ";
 const TICK_MS = 50;
 const MAX_MESSAGE_BYTES = 64 * 1024;
 const MAX_ROOMS = 200;
-const MAX_SCORE_BODY_BYTES = 2 * 1024;
+const MAX_SCORE_BODY_BYTES = 16 * 1024;
 /** Comma-separated list of page origins allowed to connect. Empty means anyone. */
 const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 
@@ -108,10 +109,17 @@ export function startServer(port = DEFAULT_PORT, host = "0.0.0.0", options: Serv
       } catch {
         return sendJson(res, 400, { error: "That was not valid JSON." });
       }
-      const v = validateSubmission(body);
-      if (!v.ok) return sendJson(res, 400, { error: v.error });
-      const entry = scores.add(v.value, { verified: false });
-      sendJson(res, 201, { ok: true, entry });
+      const b = (body ?? {}) as { name?: unknown; flight?: unknown };
+      const name = cleanText(b.name, NAME_MAX);
+      if (!name) return sendJson(res, 400, { error: "Enter a name of 1 to 20 characters." });
+      // The server never trusts a score from a browser: it re-flies the submitted flight and scores that.
+      if (!b.flight) return sendJson(res, 400, { error: "Scores are calculated by the server from the recorded flight. Submit the flight, not a score." });
+      const v = validateReplay(b.flight);
+      if (!v.ok) return sendJson(res, 400, { error: v.reason });
+      const rep = replayFlight(v.value);
+      if (!rep.ok) return sendJson(res, 422, { error: `This flight could not be verified: ${rep.reason}` });
+      const entry = scores.add({ name, missionId: v.value.missionId, craftName: v.value.design.name || "Spacecraft", score: rep.score.total, result: rep.outcome.result, difficulty: v.value.difficulty }, { verified: true });
+      sendJson(res, 201, { ok: true, entry, score: rep.score });
     });
   };
 

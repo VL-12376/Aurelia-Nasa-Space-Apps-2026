@@ -3,6 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { MISSIONS } from "../src/missions/missions";
+import { Flight } from "../src/missions/flight";
+import { computeScore } from "../src/missions/score";
+import { TEMPLATES } from "../src/spacecraft/templates";
 import { startServer, type RunningServer } from "./index";
 import { RateLimiter, ScoreStore, teamLabel, validateSubmission, type Submission } from "./scores";
 
@@ -163,16 +166,41 @@ describe("leaderboard HTTP API", () => {
   });
   const post = (body: unknown, raw = false) => fetch(`${base}/api/scores`, { method: "POST", headers: { "content-type": "application/json" }, body: raw ? String(body) : JSON.stringify(body) });
 
-  it("stores a submission as unverified and lists it with CORS", async () => {
-    const res = await post(sub({ name: "Grace", score: 91 }));
+  /** A genuine flight, played the way a browser plays it. */
+  const flight = (seed = 7) => {
+    const m = MISSIONS.find((x) => x.id === mission)!;
+    const design = structuredClone(TEMPLATES.find((t) => t.id === "light-launcher")!.design);
+    const f = new Flight(design, m, seed, { difficulty: "engineer" });
+    for (let i = 0; i < 100_000 && (f.status === "running" || f.status === "decision"); i++) {
+      if (f.status === "decision") f.decide(f.pending!.options.filter((o) => !o.disabled)[0].id);
+      else f.step(113);
+    }
+    return { input: f.replayInput(), score: computeScore(f.outcome!, m, "engineer").total };
+  };
+
+  it("scores a submitted flight on the server, marks it verified, and lists it with CORS", async () => {
+    const { input, score } = flight();
+    const res = await post({ name: "Grace", flight: input });
     expect(res.status).toBe(201);
     expect(res.headers.get("access-control-allow-origin")).toBe("*");
-    expect((await res.json()).entry).toMatchObject({ name: "Grace", verified: false, score: 91, missionName: MISSIONS[0].name });
+    const body = await res.json();
+    expect(body.entry).toMatchObject({ name: "Grace", verified: true, score, missionName: MISSIONS[0].name });
     const list = await fetch(`${base}/api/scores?mission=${mission}&limit=5`);
     const { entries } = await list.json();
-    expect(entries[0]).toMatchObject({ name: "Grace", score: 91 });
+    expect(entries[0]).toMatchObject({ name: "Grace", score });
     const other = await (await fetch(`${base}/api/scores?mission=${MISSIONS[2].id}`)).json();
     expect(other.entries).toEqual([]);
+  });
+
+  it("refuses a self-reported score and a flight that does not replay", async () => {
+    const claimed = await post({ ...sub({ score: 130 }), name: "Cheat" });
+    expect(claimed.status).toBe(400);
+    expect((await claimed.json()).error).toMatch(/calculated by the server/);
+    const { input } = flight(11);
+    const forged = await post({ name: "Cheat", flight: { ...input, decisions: [...input.decisions, { eventId: "made-up", option: "win" }] } });
+    expect(forged.status).toBe(422);
+    const { entries } = await (await fetch(`${base}/api/scores?mission=all&limit=50`)).json();
+    expect(entries.some((e: { name: string }) => e.name === "Cheat")).toBe(false);
   });
 
   it("answers the browser's preflight request", async () => {
@@ -181,16 +209,15 @@ describe("leaderboard HTTP API", () => {
     expect(res.headers.get("access-control-allow-headers")).toMatch(/content-type/);
   });
 
-  it("rejects invalid, malformed and oversized bodies", async () => {
-    expect((await post(sub({ score: 500 }))).status).toBe(400);
+  it("rejects malformed, nameless and oversized bodies", async () => {
     expect((await post("{nope", true)).status).toBe(400);
-    expect((await post("x".repeat(5000), true)).status).toBe(413);
+    expect((await post({ flight: flight().input })).status).toBe(400);
+    expect((await post("x".repeat(20_000), true)).status).toBe(413);
   });
 
   it("rate-limits repeated submissions from one address", async () => {
     const codes: number[] = [];
-    for (let i = 0; i < 12; i++) codes.push((await post(sub({ name: `R${i}` }))).status);
+    for (let i = 0; i < 12; i++) codes.push((await post({ name: `R${i}` })).status);
     expect(codes).toContain(429);
-    expect(codes[0]).toBe(201);
   });
 });

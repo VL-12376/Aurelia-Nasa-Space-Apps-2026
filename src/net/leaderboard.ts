@@ -1,6 +1,6 @@
 import { mp } from "./session";
 import type { ScoreRecord } from "../../server/scores";
-import type { Difficulty } from "../core/play";
+import type { ReplayInput } from "../missions/replay";
 
 export type { ScoreRecord };
 
@@ -24,26 +24,24 @@ export async function fetchScores(mission: string, limit = 50): Promise<ScoreRec
   }
 }
 
-export interface ScoreSubmission {
-  name: string;
-  missionId: string;
-  craftName: string;
-  score: number;
-  result: "success" | "partial" | "failed";
-  difficulty: Difficulty;
-}
+export type SubmitResult = { ok: true; score: number } | { ok: false; error: string; unreachable?: boolean };
 
-/** Sends one single-player result to the global list. It is stored as unverified. Returns false on any failure. */
-export async function submitScore(sub: ScoreSubmission): Promise<boolean> {
+/**
+ * Sends a single-player flight for the server to re-fly and score. The browser never sends a score: the
+ * server replays the flight from its seed and decisions and ranks the result it computes itself.
+ */
+export async function submitFlight(name: string, flight: ReplayInput): Promise<SubmitResult> {
   try {
     const res = await fetch(`${httpBase()}/api/scores`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(sub),
+      body: JSON.stringify({ name, flight }),
       signal: AbortSignal.timeout(WAKE_TIMEOUT_MS),
     });
-    return res.ok;
+    const body = (await res.json().catch(() => ({}))) as { error?: string; score?: { total?: number }; entry?: { score?: number } };
+    if (res.ok) return { ok: true, score: body.score?.total ?? body.entry?.score ?? 0 };
+    return { ok: false, error: body.error ?? "The server did not accept that flight." };
   } catch {
-    return false;
+    return { ok: false, error: "The leaderboard server isn't answering right now.", unreachable: true };
   }
 }

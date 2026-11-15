@@ -53,7 +53,7 @@ function table(rows: Row[], showName: boolean): HTMLElement {
             { class: r.result === "failed" ? "failed" : "" },
             h("td", { class: "num mono" }, String(i + 1)),
             showName
-              ? h("td", { class: "lb-name" }, h("span", { title: r.team?.join(", ") ?? "" }, r.name), r.verified ? h("span", { class: "lb-verified", title: "Computed by the game server in a multiplayer room" }, "✓ verified") : null)
+              ? h("td", { class: "lb-name" }, h("span", { title: r.team?.join(", ") ?? "" }, r.name), r.verified ? h("span", { class: "lb-verified", title: "Computed by the game server" }, "✓ verified") : null)
               : null,
             h("td", null, r.missionName),
             h("td", { class: "muted" }, r.craftName),
@@ -82,7 +82,7 @@ export function leaderboardScreen(): HTMLElement {
     ...MISSIONS.map((m) => h("option", { value: m.id }, m.name)),
   );
   const filterRow = h("label", { class: "lb-filter" }, h("span", { class: "muted small" }, "Mission"), filter);
-  const note = h("p", { class: "muted small lb-note" }, "Single-player scores are self-reported. A ✓ verified score was computed by the game server in a multiplayer room.");
+  const note = h("p", { class: "muted small lb-note" }, "Every score here was calculated by the game server: it re-flies each submitted mission from its recorded seed and decisions, and rejects any flight that does not replay. ✓ marks results from a verified server run.");
 
   const drawTabs = () =>
     fill(

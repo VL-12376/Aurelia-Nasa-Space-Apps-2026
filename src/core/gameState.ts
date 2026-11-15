@@ -1,6 +1,7 @@
 import { ANNUAL_BUDGET_USD, defaultAllocation, type Allocation } from "../budget/budget";
 import type { RoleChoice } from "../crew/roles";
 import type { LogEntry, Outcome } from "../missions/flight";
+import type { ReplayInput } from "../missions/replay";
 import { emptyDesign, type BuiltCraft, type Design } from "../spacecraft/design";
 import type { Difficulty, ScoreEntry } from "./play";
 
@@ -30,6 +31,8 @@ export interface FlightReport {
   year: number;
   outcome: Outcome;
   log: LogEntry[];
+  /** The recorded flight (single-player only): lets the leaderboard server re-fly it and calculate the score itself. */
+  replay?: ReplayInput;
 }
 
 export interface GameState {

@@ -6,7 +6,7 @@ import { store } from "../../core/store";
 import { formatUsd } from "../../budget/budget";
 import { MISSIONS } from "../../missions/missions";
 import { gameShell } from "../layout";
-import { submitScore } from "../../net/leaderboard";
+import { submitFlight } from "../../net/leaderboard";
 import { mp } from "../../net/session";
 
 /** Flights already sent to the global leaderboard, so one flight is submitted once. */
@@ -164,22 +164,27 @@ function scorePanel(rep: FlightReport, remote: boolean, sandbox: boolean): HTMLE
         return;
       }
       store.updateSettings({ playerName: name.slice(0, 20) });
+      if (!rep.replay) {
+        msg.className = "sc-msg small bad";
+        msg.textContent = "This flight was not recorded, so the server cannot score it. Fly another mission to rank.";
+        return;
+      }
       button.disabled = true;
       msg.className = "sc-msg small muted";
-      msg.textContent = "Sending… a sleeping server can take up to a minute to answer.";
-      const ok = await submitScore({ name, missionId: rep.missionId, craftName: rep.craftName, score: sc.total, result: o.result, difficulty });
-      if (ok) {
+      msg.textContent = "Sending… the server will re-fly your mission and score it. A sleeping server can take up to a minute.";
+      const sent = await submitFlight(name, rep.replay);
+      if (sent.ok) {
         submitted.add(key);
         done();
         msg.className = "sc-msg small ok";
-        msg.textContent = "Submitted. Your score is on the leaderboard.";
+        msg.textContent = `Verified. The server re-flew your mission and scored it ${sent.score}. It is on the leaderboard.`;
       } else {
         button.disabled = false;
         msg.className = "sc-msg small bad";
-        msg.textContent = "The leaderboard server isn't answering right now. Your score is saved on this device; you can try again in a minute.";
+        msg.textContent = sent.unreachable ? "The leaderboard server isn't answering right now. Your score is saved on this device; you can try again in a minute." : sent.error;
       }
     });
-    footer = h("div", { class: "sc-submit" }, h("label", { class: "sc-name" }, h("span", { class: "muted small" }, "Name"), input), button, msg);
+    footer = h("div", { class: "sc-submit" }, h("label", { class: "sc-name" }, h("span", { class: "muted small" }, "Name"), input), button, msg, h("p", { class: "muted small" }, "Scores on the leaderboard are calculated by the server: it replays your flight from its recorded seed and decisions rather than trusting a number from your browser."));
   }
   return h("div", { class: "panel hud" }, h("h3", null, "Mission score"), head, parts, footer);
 }

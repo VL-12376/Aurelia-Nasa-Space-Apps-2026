@@ -499,6 +499,7 @@ export function missionControl(): HTMLElement {
       session.flightApplied = true;
       store.updateGame((g) => {
         applyOutcome(g, mission!, f.design.name, session.flightSeed, f.outcome!, f.log);
+        if (g.lastFlight && !g.sandbox) g.lastFlight.replay = (f as Flight).replayInput();
       });
     }
     const o = f.outcome;

@@ -400,7 +400,7 @@ export function missionControl(): HTMLElement {
           "div",
           { class: "mc-modal waiting", role: "status", style: { "--rc": def.color } as unknown as Record<string, string> },
           h("div", { class: "mc-modal-tag mono" }, "MISSION CONTROL · TIME PAUSED"),
-          h("div", { class: "wait-head" }, h("img", { src: def.portrait, alt: "" }), h("div", null, h("h2", null, p.title), h("p", { class: "muted" }, `${who} owns this call.`, remote ? " Auto-decides in " : "", remote ? countdown : ""))),
+          h("div", { class: "wait-head" }, h("span", { class: "ai-image-thumb" }, h("img", { src: def.portrait, alt: "" })), h("div", null, h("h2", null, p.title), h("p", { class: "muted" }, `${who} owns this call.`, remote ? " Auto-decides in " : "", remote ? countdown : ""))),
           h("p", null, p.body),
           h("div", { class: "mc-options ro" }, ...p.options.map((o) => h("div", { class: "mc-opt ro" }, h("strong", null, o.label), h("span", { class: "muted small" }, o.disabled ?? o.hint)))),
         ),

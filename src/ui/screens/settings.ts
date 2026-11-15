@@ -104,7 +104,7 @@ export function settingsScreen(): HTMLElement {
         h(
           "ul",
           { class: "muted small", style: { paddingLeft: "18px", margin: "8px 0" } },
-          ...["Space data: open government space-science data (public domain)", "Research figures: published research measurements", "Music and sound effects: synthesised in your browser", "Crew voices: your device's own speech engine", "Portraits and artwork: original to AURELIA"].map((t) => h("li", null, t)),
+          ...["Space data: open government space-science data (public domain)", "Research figures: published research measurements", "Music and sound effects: synthesised in your browser", "Crew voices: your device's own speech engine", "Crew portraits and banner: AI-generated images, watermarked", "Code, lessons and text: written with AI assistance (GitHub Copilot)"].map((t) => h("li", null, t)),
         ),
       ),
     ),

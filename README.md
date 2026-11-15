@@ -6,6 +6,12 @@ AURELIA is a space exploration and aerospace engineering simulation game. Player
 
 Physics is simplified for teaching, and the game labels which values are real measurements and which are game models.
 
+## AI disclosure
+
+- **Code, lessons and text:** written with AI assistance (the GitHub Copilot assistant in VS Code), then run and tested by the team.
+- **Images:** the four crew portraits and the multiplayer banner in `public/crew/` are AI-generated and carry a visible "AI-GENERATED IMAGE" watermark.
+- **Audio:** music and sound effects are synthesised by code in the browser. Crew voices come from the player's own device speech engine.
+
 ## Run it
 
 ```bash
@@ -87,7 +93,7 @@ Real figures come from public-domain government space-science data and published
 - **Live** (Headquarters): the Moon's and Mars's current distance and radio delay from an open ephemeris service, the next asteroid close approaches from an open close-approach service, and recent space weather (latest solar flare, coronal mass ejection and particle-event counts, geomagnetic storms) from open space-weather records. These services don't all allow direct calls from a web page, so the game server fetches them and caches the result for 30 minutes at `GET /api/space`. Each source fails on its own, so partial data is fine. A game-only "activity factor" (0.5 to 2.0) is worked out from the recent flare sizes (see `src/data/weather.ts`); it is a teaching model, not an official measure.
   - Server setting `SPACE_DATA_API_KEY` (optional): your own free key for the open space-data gateway. Without it the server uses the gateway's shared `DEMO_KEY`, which allows only about 30 requests an hour per IP address; the 30 minute cache keeps use far below that. If the gateway does not answer, the server asks the weather service's own server (no key needed).
 - **Reference** (`src/data/real.ts`): published stage data for historic and current heavy launchers, crew-capsule figures, lunar mission campaign milestones, a real mission matching each game mission, technology-readiness and concept-maturity scales, Hohmann transfers and Mars launch windows.
-- **Pictures**: real mission photos come live from an open public-domain image library in the mission briefing and the Academy, each credited and linked. They are fetched when you are online (and remembered for a week); no images are bundled with the game. Public 3D resources are linked, not included.
+- **Pictures**: the crew portraits and multiplayer banner are AI-generated illustrations, with visible labels. Planet views are procedural illustrations rather than photographs.
 - **Mission Academy**: eight short lessons (destination, delta-v, rocket equation, orbits and launch windows, launch day, how missions mature, real missions, and keeping a crew alive), each ending in a quiz. The last one has a radiation dose calculator built on measured dose rates and a published 600 mSv career limit, from public human-research data. Crew life support and fatigue are explained but not simulated.
 - **Guidance**: a next-step banner, a hangar build coach that names the next part, highlights it and can fit it for you (and nudges if you stall), and a spoken launch poll and countdown with explained flight call-outs.
 - The flight physics and part stats are simplified teaching models, and the game says so.

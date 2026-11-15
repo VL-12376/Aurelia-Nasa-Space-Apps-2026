@@ -775,3 +775,94 @@ details.panel summary {
     top: 84px;
   }
 }
+
+/* Decision timer and manual-control mini-game */
+.mc-timer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #cfeaff;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+}
+.mc-timer .bar {
+  flex: 1;
+  height: 6px;
+}
+.mc-timer .bar span {
+  background: #7fc8ff;
+  transition: width 0.1s linear;
+}
+.mc-timer.urgent {
+  color: var(--bad);
+}
+.mc-timer.urgent .bar span {
+  background: var(--bad);
+}
+.mg-badge {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border: 1px solid var(--lavender);
+  border-radius: 3px;
+  font-size: 0.56rem;
+  letter-spacing: 0.14em;
+  color: var(--lavender);
+  vertical-align: middle;
+}
+.mc-opt.manual {
+  border-color: rgba(184, 166, 232, 0.6);
+}
+.mg {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.mg h2 {
+  margin: 0;
+}
+.mg-track {
+  position: relative;
+  height: 46px;
+  border-radius: 6px;
+  background: rgba(6, 10, 28, 0.9);
+  border: 1px solid rgba(127, 200, 255, 0.4);
+  overflow: hidden;
+}
+.mg-zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(143, 214, 176, 0.35);
+  border-left: 2px solid var(--ok);
+  border-right: 2px solid var(--ok);
+}
+.mg-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  margin-left: -2px;
+  background: #fff;
+  box-shadow: 0 0 12px #fff;
+}
+.mg-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  color: #cfeaff;
+}
+.mg-result[data-tone="ok"] {
+  color: var(--ok);
+}
+.mg-result[data-tone="warn"] {
+  color: var(--warn);
+}
+.mg-result[data-tone="bad"] {
+  color: var(--bad);
+}
+.mg-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}

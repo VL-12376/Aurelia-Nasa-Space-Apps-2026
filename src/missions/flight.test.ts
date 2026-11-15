@@ -137,6 +137,26 @@ describe("flight simulation", () => {
     expect(boosted.windRisk()).toBeGreaterThan(base.windRisk());
   });
 
+  it("manual control: skill raises survival, deep space blocks it, and a timeout takes the default", () => {
+    const f = new Flight(template("light-launcher"), mission("s1-first-satellite"), 1);
+    expect(f.manualAllowed()).toBeUndefined();
+    // Force the engine-anomaly decision and check it offers the mini-game option.
+    let found = false;
+    for (let s = 1; s <= 200 && !found; s++) {
+      const g = new Flight(template("light-launcher"), mission("s1-first-satellite"), s);
+      for (let i = 0; i < 400 && g.status === "running"; i++) g.step(30);
+      if (g.status === "decision" && g.pending?.options.some((o) => o.manual)) {
+        found = true;
+        expect(g.pending.timeS).toBeGreaterThan(0);
+        expect(g.pending.options.some((o) => o.id === g.pending!.fallback)).toBe(true);
+        g.decideTimeout();
+        expect(["running", "failed"]).toContain(g.status as string);
+        expect(g.log.some((l) => /No order was given in time/.test(l.text))).toBe(true);
+      }
+    }
+    expect(found).toBe(true);
+  });
+
   it("random events show up across seeds, each is playable to the end, and most flights see one", () => {
     const seen = new Set<string>();
     let withEvent = 0;

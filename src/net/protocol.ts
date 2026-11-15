@@ -25,7 +25,7 @@ export type ClientMsg =
   | { t: "build" }
   | { t: "launch"; craftId: string }
   | { t: "time"; mode: "pause" | "auto" | number }
-  | { t: "decide"; option: string }
+  | { t: "decide"; option: string; skill?: number }
   | { t: "toHangar" }
   | { t: "rejoin"; code: string; token: string };
 

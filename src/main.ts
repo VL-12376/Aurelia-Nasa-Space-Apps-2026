@@ -31,6 +31,7 @@ import { missionControl } from "./ui/screens/missionControl";
 import { debriefScreen } from "./ui/screens/debrief";
 import { solarMapScreen } from "./ui/screens/solarMap";
 import { hangarScreen } from "./ui/screens/hangar";
+import { session } from "./ui/session";
 
 const app = document.getElementById("app");
 const canvas = document.getElementById("bg-canvas") as HTMLCanvasElement | null;
@@ -70,4 +71,8 @@ router.onNavigate((id) => {
   audio.setMood(mood);
   if (id !== "control") audio.setThrust(0);
 });
-if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__router = router;
+if (import.meta.env.DEV) {
+  const w = window as unknown as Record<string, unknown>;
+  w.__router = router;
+  w.__session = session;
+}

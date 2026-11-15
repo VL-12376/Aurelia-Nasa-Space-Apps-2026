@@ -47,7 +47,7 @@ export class RemoteFlight implements FlightLike {
   step(): void {
     /* The server steps the simulation. */
   }
-  decide(optionId: string): void {
-    mp.send({ t: "decide", option: optionId });
+  decide(optionId: string, skill?: number): void {
+    mp.send({ t: "decide", option: optionId, skill });
   }
 }

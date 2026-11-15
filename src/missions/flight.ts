@@ -16,12 +16,18 @@ export interface DecisionOption {
   label: string;
   hint: string;
   disabled?: string;
+  /** Plays a skill mini-game before the option resolves; the text tells the player what to do in it. */
+  manual?: string;
 }
 export interface PendingDecision {
   eventId: string;
   title: string;
   body: string;
   options: DecisionOption[];
+  /** Seconds the crew has to answer before the spacecraft's autonomous protection acts. */
+  timeS?: number;
+  /** The option autonomy takes if nobody answers in time. */
+  fallback?: string;
 }
 export type Status = "running" | "decision" | "success" | "partial" | "failed";
 
@@ -136,8 +142,27 @@ export interface FlightLike {
   activeTargets(): Target[];
   chunkSeconds(): number;
   step(dt: number): void;
-  decide(optionId: string): void;
+  decide(optionId: string, skill?: number): void;
 }
+
+/** How long the crew has to react to each kind of trouble, and what the autopilot does if nobody does. */
+export const EVENT_TIMING: Record<string, { timeS: number; fallback: string }> = {
+  "engine-anomaly": { timeS: 12, fallback: "shutdown" },
+  "wind-shear": { timeS: 10, fallback: "press" },
+  "thrust-shortfall": { timeS: 20, fallback: "accept" },
+  "debris-warning": { timeS: 20, fallback: "accept" },
+  "landing-hazard": { timeS: 15, fallback: "land" },
+  "entry-heat": { timeS: 12, fallback: "trust" },
+  "solar-flare": { timeS: 25, fallback: "safe" },
+  "comm-dropout": { timeS: 30, fallback: "wait" },
+  "power-brownout": { timeS: 30, fallback: "shed" },
+  "instrument-fault": { timeS: 30, fallback: "reboot" },
+  "data-full": { timeS: 30, fallback: "prioritise" },
+  "nav-error": { timeS: 40, fallback: "later" },
+};
+
+/** Option ids that play a mini-game are offered only while the radio delay still allows live control. */
+export const MANUAL_MAX_RTT_S = 20;
 
 export function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
@@ -221,11 +246,16 @@ const EVENTS: EventDef[] = [
         options: [
           { id: "shutdown", label: "Shut the engine down and continue", hint: n > 1 ? "Loses thrust and costs extra delta-v, but protects the neighbours." : "With one engine there is nothing left to push." },
           { id: "continue", label: "Keep burning at full power", hint: "35% chance the engine fails violently." },
+          { id: "manual", label: "Take manual control of the throttle", hint: "Mini-game: the steadier your hand, the better the engine's odds. A poor attempt is worse than shutting it down.", manual: "Hold the chamber pressure inside the green band.", disabled: f.manualAllowed() },
         ],
       };
     },
     resolve: (opt, f, rng) => {
       const n = f.stats.stages[0].engines;
+      if (opt === "manual") {
+        if (rng() < 0.3 + 0.65 * f.skill) return { tone: "ok", text: `Your throttle work nursed the engine through at reduced thrust (${Math.round(f.skill * 100)}% accuracy). The burn goes on.`, dvCost: 60, stress: 0.1, lesson: "Throttling a struggling engine back can save it, if the hand on the control is steady. Flight controllers train for this in simulators for years." };
+        return { tone: "bad", text: "The throttle drifted out of the safe band and the engine failed violently.", fail: "Engine lost after a poor manual throttle correction.", lesson: "Manual control is only better than the automatic response if it is done well. An unsteady correction can be worse than shutting the engine down." };
+      }
       if (opt === "shutdown") {
         if (n === 1) return { tone: "bad", text: "The only engine was shut down. The vehicle has no thrust.", fail: "Loss of the only booster engine: a single-engine stage has no redundancy.", lesson: "A single booster engine means any engine failure ends the mission. Clusters of two or more engines can survive losing one." };
         const twr = (f.stats.liftoffTwr * (n - 1)) / n;
@@ -276,9 +306,14 @@ const EVENTS: EventDef[] = [
         { id: "wait", label: "Wait for the link to recover", hint: "Safe, but costs several hours." },
         { id: "autonomy", label: "Run the autonomous recovery script", hint: "70% chance of quick recovery, otherwise a longer outage." },
         { id: "backup", label: "Switch to the backup antenna", hint: "Instant if a second antenna is fitted.", disabled: f.antennaCount() < 2 ? "No second antenna fitted" : undefined },
+        { id: "repoint", label: "Re-point the ground antenna by hand", hint: "Mini-game: a steady hand reacquires the signal in minutes; a poor one wastes hours.", manual: "Land the marker in the green band to lock on to the signal." },
       ],
     }),
-    resolve: (opt, _f, rng) => {
+    resolve: (opt, f, rng) => {
+      if (opt === "repoint") {
+        if (rng() < 0.45 + 0.5 * f.skill) return { tone: "ok", text: `The ground antenna locked on and the link recovered (${Math.round(f.skill * 100)}% accuracy).`, delayS: 300, lesson: "Re-acquiring a weak signal is a skill: precise pointing matters more than raw power." };
+        return { tone: "warn", text: "The pointing was off and it took hours to find the signal again.", delayS: 10_800, stress: 0.1, lesson: "A narrow beam needs accurate aim. A poor attempt costs hours." };
+      }
       if (opt === "backup") return { tone: "ok", text: "Switched to the backup antenna. The link recovered immediately.", lesson: "A second antenna is cheap insurance: it restored the link at once." };
       if (opt === "autonomy" && rng() < 0.7) return { tone: "ok", text: "The recovery script reacquired the signal in minutes.", delayS: 600 };
       if (opt === "autonomy") return { tone: "warn", text: "The script failed and ground controllers had to resolve it. Hours were lost.", delayS: 14_400, science: 0.95, stress: 0.1 };
@@ -298,9 +333,14 @@ const EVENTS: EventDef[] = [
       options: [
         { id: "safe", label: "Enter safe mode", hint: "Instruments off, antennas pointed home. Costs a little time." },
         { id: "operate", label: "Stay fully operational", hint: "30% chance of instrument damage." },
+        { id: "partial", label: "Power down only the most sensitive instrument", hint: "Keeps most science running. About 12% chance of damage, and a small loss of data." },
       ],
     }),
     resolve: (opt, f, rng) => {
+      if (opt === "partial") {
+        if (rng() < 0.12 + f.late() * 0.3) return { tone: "bad", text: "The other instruments were hit by the particles and one was damaged.", science: 0.6, stress: 0.2, lostObjective: f.lastScienceObjective(), lesson: "Protecting only part of the payload leaves the rest exposed. A middle path is a middle result." };
+        return { tone: "warn", text: "The sensitive instrument was safe and the rest rode out the flare.", delayS: 900, science: 0.92, stress: 0.1, lesson: "Protecting the most valuable instrument first is a sensible compromise when you cannot protect everything." };
+      }
       if (opt === "safe" && rng() < f.late()) return { tone: "warn", text: "The safe-mode command crossed the radio delay after the first particles had already arrived. One instrument took some damage.", delayS: 3_600, science: 0.8, stress: 0.1, lesson: "Far from Earth the particles can beat your command. That is why spacecraft detect radiation themselves and protect themselves automatically." };
       if (opt === "safe") return { tone: "ok", text: "Safe mode kept the electronics protected. The flare passed with no damage.", delayS: 3_600, lesson: "Safe mode costs a little science time but protects the hardware." };
       if (rng() < 0.3) return { tone: "bad", text: "Particles damaged an instrument's electronics.", science: 0.55, stress: 0.3, lostObjective: f.lastScienceObjective(), lesson: "Staying fully operational risked the instruments, and this time it cost part of the science return." };
@@ -344,10 +384,15 @@ const EVENTS: EventDef[] = [
           { id: "divert", label: "Divert to a smoother site", hint: `Costs about ${cost} m/s. Best odds of a safe landing.`, disabled: left < cost ? "Not enough propellant" : undefined },
           { id: "hover", label: "Hover and scan for a site", hint: "Costs about 40 m/s and gives fair odds.", disabled: left < 40 ? "Not enough propellant" : undefined },
           { id: "land", label: "Land on the planned site", hint: `${f.hasImu() ? "About 70%" : "About 55%"} chance to touch down safely.` },
+          { id: "manual", label: "Take the controls and land it yourself", hint: "Mini-game: pick your own spot. A steady hand beats the automatic landing; a shaky one is worse.", manual: "Land the marker in the green band to set the lander down.", disabled: f.manualAllowed() },
         ],
       };
     },
     resolve: (opt, f, rng) => {
+      if (opt === "manual") {
+        if (rng() < (f.hasImu() ? 0.55 : 0.45) + 0.45 * f.skill) return { tone: "ok", text: `You flew it down by hand to a clear patch (${Math.round(f.skill * 100)}% accuracy).`, dvCost: 50, lesson: "Hand-flying a landing needs a short radio link. At the Moon the delay is about two seconds each way; at Mars it is minutes, which is why Mars landers land themselves." };
+        return { tone: "bad", text: "The manual touchdown was too fast and the lander tipped over.", fail: "Crashed during a manual landing.", lesson: "Manual landings reward practice. A poor attempt is riskier than trusting the automatic system." };
+      }
       const cost = f.currentPhaseId() === "descent" ? 90 : 120;
       if (opt === "divert") return rng() < 0.95 ? { tone: "ok", text: "Diverted to a smooth plain and touched down gently.", dvCost: cost, lesson: "Spending propellant on a divert bought the safest landing. That is why landers carry spare delta-v." } : { tone: "bad", text: "The divert site hid a crater edge.", dvCost: cost, fail: "Hazard at the diverted landing site." };
       if (opt === "hover") return rng() < 0.85 ? { tone: "ok", text: "Scanned, found a flat spot and landed.", dvCost: 40, lesson: "Hovering costs propellant every second, but it lets the lander choose its site." } : { tone: "bad", text: "The scan ran out of time and the lander touched down badly.", dvCost: 40, fail: "Landing site hazard not avoided." };
@@ -391,9 +436,11 @@ const EVENTS: EventDef[] = [
       options: [
         { id: "reboot", label: "Reboot it", hint: "30 minutes. 85% chance to fix." },
         { id: "diagnose", label: "Run full diagnostics", hint: "2 hours. 98% chance to fix." },
+        { id: "backup", label: "Switch to the backup sensor mode", hint: "15 minutes. 90% chance to restore data, with a small loss in quality." },
       ],
     }),
     resolve: (opt, _f, rng) => {
+      if (opt === "backup") return rng() < 0.9 ? { tone: "ok", text: "The backup mode restored the data stream with slightly lower quality.", delayS: 900, science: 0.95, lesson: "A degraded mode that works now can be worth more than a perfect one that takes hours." } : { tone: "warn", text: "The backup mode did not take and the instrument needed a longer recovery.", delayS: 5_400, science: 0.8, stress: 0.1 };
       const ok = rng() < (opt === "reboot" ? 0.85 : 0.98);
       const delay = opt === "reboot" ? 1_800 : 7_200;
       return ok ? { tone: "ok", text: "The instrument recovered.", delayS: delay } : { tone: "warn", text: "The instrument recovered only partly.", delayS: delay, science: 0.7, stress: 0.15, lesson: "A quick reboot is faster but fixes less often than a full diagnostic." };
@@ -412,9 +459,14 @@ const EVENTS: EventDef[] = [
       options: [
         { id: "throttle", label: "Throttle down through Max Q", hint: "Costs about 120 m/s of extra delta-v but keeps the loads low." },
         { id: "press", label: "Fly through at full thrust", hint: `Saves fuel. ${Math.round(f.windRisk() * 100)}% chance the structure is overloaded, based on your thrust-to-weight.` },
+        { id: "manual", label: "Fly the gust by hand", hint: "Mini-game: steer through the shear. A clean run cuts the risk sharply for only a little fuel.", manual: "Keep the marker inside the green band to hold the heading.", disabled: f.manualAllowed() },
       ],
     }),
     resolve: (opt, f, rng) => {
+      if (opt === "manual") {
+        if (rng() < f.windRisk() * (1 - 0.85 * f.skill)) return { tone: "bad", text: "The correction came too late and the wind loaded the structure past its limit.", fail: "Structural failure at maximum dynamic pressure.", lesson: "Wind shear changes faster than a human can steer. A clean manual run helps, but it cannot remove the risk." };
+        return { tone: "ok", text: `You steered through the gust (${Math.round(f.skill * 100)}% accuracy) and the loads stayed in limits.`, dvCost: 40, stress: f.skill < 0.5 ? 0.15 : 0, lesson: "Active control through the gust spent a little fuel and cut the structural load." };
+      }
       if (opt === "throttle") return { tone: "warn", text: "The engines throttled back through the worst of it and the rocket flew on smoothly.", dvCost: Math.min(120, f.dvSpare()), lesson: "Real rockets throttle down for Max Q on purpose: slowing briefly while the air is thick is cheaper than a bent rocket." };
       if (rng() < f.windRisk()) return { tone: "bad", text: "The wind loaded the structure past its limit and the vehicle broke up.", fail: "Structural failure at maximum dynamic pressure.", lesson: "Max Q is where speed and air density multiply into the biggest force on the vehicle. Pushing through shear there is a gamble, and a high thrust-to-weight raises the odds against you." };
       return { tone: "ok", text: "The structure held. That was close.", stress: 0.25, lesson: "It held this time, but the margin at Max Q is exactly why real launches are delayed for high winds." };
@@ -433,9 +485,14 @@ const EVENTS: EventDef[] = [
       options: [
         { id: "extend", label: "Extend the burn", hint: "Costs about 80 m/s of extra propellant and some time.", disabled: f.dvSpare() < 80 ? "Not enough propellant" : undefined },
         { id: "accept", label: "Accept the shortfall", hint: `Saves fuel. ${Math.round(f.shortfallRisk() * 100)}% chance the target is missed: the less spare delta-v you hold, the worse the odds.` },
+        { id: "manual", label: "Trim the burn by hand", hint: "Mini-game: fine-tune the throttle to make up the missing thrust for about half the fuel.", manual: "Land the marker in the green band to trim the thrust.", disabled: f.manualAllowed() },
       ],
     }),
     resolve: (opt, f, rng) => {
+      if (opt === "manual") {
+        if (rng() < 0.5 + 0.45 * f.skill) return { tone: "ok", text: `A careful trim made up the missing thrust (${Math.round(f.skill * 100)}% accuracy).`, dvCost: 40, lesson: "A small, well-aimed correction is cheaper than extending the whole burn." };
+        return { tone: "warn", text: "The trim overshot and had to be redone, costing extra propellant and time.", dvCost: 100, delayS: 300, stress: 0.1, lesson: "A clumsy correction costs more than the problem it was fixing." };
+      }
       if (opt === "extend") return { tone: "ok", text: "The burn ran a little longer and the target speed was reached.", dvCost: 80, delayS: 120, lesson: "Burns are timed to reach a speed, not a clock reading. A weak engine just needs longer, provided there is propellant left to pay for it." };
       if (rng() < f.shortfallRisk()) return { tone: "bad", text: "The shortfall left the spacecraft on the wrong path.", fail: "Burn ended short of the required speed.", lesson: "A small speed error early in a trajectory becomes a large position error later. That is why mission plans carry spare delta-v." };
       return { tone: "ok", text: "The error was small enough to absorb in later corrections.", stress: 0.2, lesson: "It worked out, but only because the later correction burns had some spare margin." };
@@ -454,9 +511,14 @@ const EVENTS: EventDef[] = [
       options: [
         { id: "avoid", label: "Fire thrusters to dodge it", hint: `Costs about 25 m/s of propellant and a little time.${f.late() > 0.05 ? " At this distance the command may arrive too late." : ""}` },
         { id: "accept", label: "Accept the small risk", hint: `Saves fuel. ${Math.round(f.debrisRisk() * 100)}% chance of impact damage, based on the size of your solar wings.` },
+        { id: "manual", label: "Fly an avoidance burn by hand", hint: "Mini-game: a precise burn costs less fuel and works better than a rushed one.", manual: "Land the marker in the green band to aim the burn.", disabled: f.manualAllowed() },
       ],
     }),
     resolve: (opt, f, rng) => {
+      if (opt === "manual") {
+        if (rng() < f.debrisRisk() * (1 - f.skill)) return { tone: "bad", text: "The burn was badly aimed and a fragment still struck the spacecraft.", science: 0.6, stress: 0.3, dvCost: 35, lostObjective: f.lastScienceObjective(), lesson: "An aimed avoidance burn needs accurate timing. A poor one burns fuel and still gets hit." };
+        return { tone: "ok", text: `A precise burn took the spacecraft clear (${Math.round(f.skill * 100)}% accuracy).`, dvCost: f.skill >= 0.66 ? 15 : 35, delayS: 600, lesson: "A precise avoidance burn needs very little propellant. Accuracy is cheaper than brute force." };
+      }
       const late = opt === "avoid" && rng() < f.late();
       if (opt === "avoid" && !late) return { tone: "ok", text: "A short thruster burn moved the spacecraft clear.", dvCost: Math.min(25, f.dvSpare()), delayS: 600, lesson: "Real operators move satellites for conjunctions like this. Spare propellant is also safety margin." };
       if (rng() < f.debrisRisk()) return { tone: "bad", text: late ? "The dodge command arrived too late and a fragment struck the spacecraft." : "A fragment struck the spacecraft and damaged an instrument.", science: 0.6, stress: 0.3, lostObjective: f.lastScienceObjective(), lesson: "Debris is small but moves at around 10 km/s relative to you. Skipping the dodge, or acting too late, cost science." };
@@ -515,6 +577,7 @@ export class Flight {
   private firedEvents = new Set<string>();
   /** Accumulated risk from gambles and damage; scales the odds of every later event. */
   private stress = 0;
+  private skillNow = 0.5;
   private record: NonNullable<Outcome["events"]> = [];
   private objectives: boolean[];
   private scienceUp = 1;
@@ -557,6 +620,21 @@ export class Flight {
   /* ---------- helpers used by events ---------- */
   fired(id: string): boolean {
     return this.firedEvents.has(id);
+  }
+  /** Result of the mini-game the player just played, 0 (poor) to 1 (perfect). */
+  get skill(): number {
+    return this.skillNow;
+  }
+  /** Whether the radio link is quick enough to fly something by hand from the ground. */
+  manualAllowed(): string | undefined {
+    return this.rttS() > MANUAL_MAX_RTT_S ? `Radio delay (${(this.rttS() / 60).toFixed(1)} min round trip) is too long to fly this by hand` : undefined;
+  }
+  /** Nobody answered in time: the spacecraft's autonomous protection takes the default action. */
+  decideTimeout(): void {
+    if (!this.pending) return;
+    this.say("warn", "No order was given in time. The spacecraft's autonomous protection took the default action.");
+    this.lessons.push("When no one can answer in time, the spacecraft acts alone. Autonomous fault protection is built to be safe and simple, not clever, which is why a prepared crew usually does better.");
+    this.decide(this.pending.fallback ?? this.pending.options.find((o) => !o.disabled && !o.manual)!.id);
   }
   /** Round-trip radio time to the spacecraft, seconds: a command and its confirmation each take one light-time. */
   rttS(): number {
@@ -809,7 +887,7 @@ export class Flight {
   private raise(def: EventDef): void {
     const p = this.phases[this.phaseIdx];
     this.firedEvents.add(def.id);
-    this.pending = def.build(p, this);
+    this.pending = { ...def.build(p, this), ...EVENT_TIMING[def.id] };
     const rtt = this.rttS();
     if (rtt > 60) {
       const mins = rtt / 120;
@@ -820,11 +898,12 @@ export class Flight {
   }
 
   /** The player picks an option for the pending decision. */
-  decide(optionId: string): void {
+  decide(optionId: string, skill?: number): void {
     if (!this.pending || this.status !== "decision") return;
     const def = EVENTS.find((e) => e.id === this.pending!.eventId)!;
     const opt = this.pending.options.find((o) => o.id === optionId);
     if (!opt || opt.disabled) return;
+    this.skillNow = Math.min(1, Math.max(0, Number.isFinite(skill) ? (skill as number) : 0.5));
     const title = this.pending.title;
     const rtt = this.rttS();
     const res = def.resolve(optionId, this, this.rng);

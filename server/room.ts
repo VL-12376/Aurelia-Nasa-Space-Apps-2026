@@ -224,7 +224,7 @@ export class Room {
         const opt = f.pending.options.find((o) => o.id === msg.option);
         if (!opt || opt.disabled) return err("That option is not available.");
         this.say(owner, false, `I'll go with: ${opt.label}.`, p.name);
-        f.decide(msg.option);
+        f.decide(msg.option, typeof msg.skill === "number" ? msg.skill : undefined);
         this.afterStep();
         return;
       }
@@ -370,7 +370,7 @@ export class Room {
     if (key !== this.decisionKey) {
       this.decisionKey = key;
       const human = this.liveHuman(owner);
-      this.decisionDeadline = this.now + (human ? HUMAN_DECISION_MS : AI_DECISION_MS);
+      this.decisionDeadline = this.now + (human ? Math.max(HUMAN_DECISION_MS * 0.6, (pending.timeS ?? 30) * 2000) : AI_DECISION_MS);
       this.say(owner, !human, human ? `${pending.title}. ${human.name}, this one is yours.` : `${pending.title}. I've got this one.`, human?.name);
       this.pushFlight(true);
       return;

@@ -8,6 +8,7 @@ import type { Flight, FlightLike, Telemetry } from "../../missions/flight";
 import { mp } from "../../net/session";
 import { audio } from "../../audio/engine";
 import { firstSentence, speak, stopSpeaking } from "../../audio/voice";
+import { miniGame } from "../minigame";
 import { RemoteFlight } from "../../net/remoteFlight";
 import { chatDock, crewStrip, type CrewRow } from "../crew";
 import { hohmannState, R_EARTH, R_MARS, R_MOON } from "../../missions/kinematics";
@@ -373,6 +374,11 @@ export function missionControl(): HTMLElement {
   let shownDecision = "";
   let aiTimer = 0;
   let countdown: HTMLElement | null = null;
+  let decisionTimer = 0;
+  function stopDecisionTimer(): void {
+    clearInterval(decisionTimer);
+    decisionTimer = 0;
+  }
   function showDecision(): void {
     const p = f.pending;
     if (!p) return;
@@ -381,6 +387,7 @@ export function missionControl(): HTMLElement {
     if (countdown && p.secondsLeft !== undefined) countdown.textContent = `${Math.max(0, Math.ceil(p.secondsLeft))} s`;
     if (id === shownDecision) return;
     shownDecision = id;
+    stopDecisionTimer();
     audio.sfx("alert");
     const mine = remote ? myRole === owner : myRole === "all" || myRole === owner;
     decision.hidden = false;
@@ -412,11 +419,24 @@ export function missionControl(): HTMLElement {
       }
       return;
     }
-    countdown = null;
-    decision.replaceChildren(
-      h(
-        "div",
-        { class: "mc-modal", role: "dialog", "aria-modal": "true", "aria-label": p.title },
+    const total = (p.timeS ?? 30) * (reduced ? 2 : 1);
+    const secs = h("span", { class: "mono" }, remote ? `${Math.ceil(p.secondsLeft ?? total)} s` : `${total} s`);
+    const fillEl = h("span", { style: { width: "100%" } });
+    const timerEl = h("div", { class: "mc-timer", role: "timer" }, h("span", { class: "mono small" }, remote ? "THE CREW AUTO-DECIDES IN " : "RESPOND IN "), secs, remote ? null : h("div", { class: "bar" }, fillEl));
+    countdown = remote ? secs : null;
+    let mg: { stop(): void } | null = null;
+    const modal = h("div", { class: "mc-modal", role: "dialog", "aria-modal": "true", "aria-label": p.title });
+    const settle = (optId: string, skill?: number) => {
+      stopDecisionTimer();
+      mg?.stop();
+      f.decide(optId, skill);
+      decision.hidden = true;
+      if (!remote) shownDecision = "";
+      updateHud(f.telemetry());
+    };
+    const showOptions = () =>
+      modal.replaceChildren(
+        timerEl,
         h("div", { class: "mc-modal-tag mono" }, "MISSION CONTROL · TIME PAUSED"),
         h("h2", null, p.title),
         h("p", null, p.body),
@@ -424,12 +444,50 @@ export function missionControl(): HTMLElement {
           "div",
           { class: "mc-options" },
           ...p.options.map((o) =>
-            h("button", { class: "mc-opt", disabled: !!o.disabled, title: o.disabled ?? o.hint, onclick: () => { f.decide(o.id); decision.hidden = true; if (!remote) shownDecision = ""; updateHud(f.telemetry()); } }, h("strong", null, o.label), h("span", { class: "muted small" }, o.disabled ?? o.hint)),
+            h(
+              "button",
+              {
+                class: `mc-opt${o.manual ? " manual" : ""}`,
+                disabled: !!o.disabled,
+                title: o.disabled ?? o.hint,
+                onclick: () => {
+                  if (!o.manual) return settle(o.id);
+                  const game = miniGame({ title: o.label, hint: o.manual, onDone: (score) => settle(o.id, score) });
+                  mg = game;
+                  modal.replaceChildren(timerEl, game.el);
+                },
+              },
+              h("strong", null, o.label, o.manual ? h("span", { class: "mg-badge mono" }, "MINI-GAME") : null),
+              h("span", { class: "muted small" }, o.disabled ?? o.hint),
+            ),
           ),
         ),
-      ),
-    );
+      );
+    showOptions();
+    decision.replaceChildren(modal);
     (decision.querySelector(".mc-opt:not([disabled])") as HTMLElement | null)?.focus();
+
+    if (!remote) {
+      // Real controllers have seconds, not minutes. If nobody answers, the spacecraft's autonomy takes the default action.
+      const deadline = performance.now() + total * 1000;
+      decisionTimer = window.setInterval(() => {
+        const left = (deadline - performance.now()) / 1000;
+        secs.textContent = `${Math.max(0, Math.ceil(left))} s`;
+        fillEl.style.width = `${Math.max(0, (left / total) * 100)}%`;
+        timerEl.classList.toggle("urgent", left < 5);
+        if (left > 0) return;
+        stopDecisionTimer();
+        mg?.stop();
+        const fl = f as Flight;
+        if (fl.pending?.eventId !== p.eventId) return;
+        audio.sfx("error");
+        say(owner, "No answer in time. Autopilot is taking the default action.");
+        fl.decideTimeout();
+        decision.hidden = true;
+        shownDecision = "";
+        updateHud(f.telemetry());
+      }, 100);
+    }
   }
 
   let endShown = false;
@@ -557,6 +615,7 @@ export function missionControl(): HTMLElement {
       decision.hidden = true;
       shownDecision = "";
       countdown = null;
+      stopDecisionTimer();
     }
     if ((f.status === "success" || f.status === "partial" || f.status === "failed") && !endTimer) {
       updateHud(t);
@@ -572,6 +631,7 @@ export function missionControl(): HTMLElement {
     clearTimeout(aiTimer);
     clearTimeout(calloutTimer);
     preTimers.forEach(clearTimeout);
+    stopDecisionTimer();
     stopSpeaking();
     scene.dispose();
   });

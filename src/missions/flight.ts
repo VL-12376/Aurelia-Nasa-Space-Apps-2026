@@ -14,7 +14,7 @@ export interface FlightContext {
   plan?: MissionPlan;
   difficulty?: Difficulty;
   sandbox?: boolean;
-  /** Real recent solar activity from NASA DONKI: 0.5 (quiet) to 2 (very active). */
+  /** Real recent solar activity from open space-weather records: 0.5 (quiet) to 2 (very active). */
   solarActivity?: number;
   /** A short description of the latest real flare, shown in the solar flare event. */
   latestFlare?: string;
@@ -350,7 +350,7 @@ const EVENTS: EventDef[] = [
     build: (_p, f) => ({
       eventId: "solar-flare",
       title: "Solar flare warning",
-      body: `${f.latestFlare() ? `Real space weather right now: ${f.latestFlare()} (NASA DONKI). ` : ""}A burst of high-energy particles from the Sun is on its way. It can damage electronics and degrade instruments. Mission control has a few minutes to react.`,
+      body: `${f.latestFlare() ? `Real space weather right now: ${f.latestFlare()} (open space-weather records). ` : ""}A burst of high-energy particles from the Sun is on its way. It can damage electronics and degrade instruments. Mission control has a few minutes to react.`,
       options: [
         { id: "safe", label: "Enter safe mode", hint: "Instruments off, antennas pointed home. Costs a little time." },
         { id: "operate", label: "Stay fully operational", hint: "30% chance of instrument damage." },

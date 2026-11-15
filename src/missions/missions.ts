@@ -183,7 +183,7 @@ export const MISSIONS: readonly MissionDef[] = [
     category: "lunar-orbit",
     season: 3,
     destination: "Moon (crewed flyby)",
-    description: "Send a crew-class capsule round the Moon on a free-return path and bring it home through the atmosphere, in the style of NASA's Artemis II. Crew life support is not modelled: AURELIA simulates the trajectory, power, communications, navigation and heat shield, not the air, water or people inside.",
+    description: "Send a crew-class capsule round the Moon on a free-return path and bring it home through the atmosphere: a crewed flight of about ten days with four crew. Crew life support is not modelled: AURELIA simulates the trajectory, power, communications, navigation and heat shield, not the air, water or people inside.",
     sciencePurpose: "A free-return path needs no braking burn at the Moon, because lunar gravity turns the spacecraft round. And a capsule coming back from the Moon meets the air at about 11 km/s, much faster than one returning from low Earth orbit, so its heat shield works harder.",
     objectives: ["Reach Earth orbit and check out the spacecraft", "Perform translunar injection", "Fly round the Moon", "Return and re-enter safely"],
     requiredDeltaV: 12630,

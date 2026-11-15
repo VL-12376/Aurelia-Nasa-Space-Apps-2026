@@ -54,22 +54,22 @@ describe("launch vehicle catalogue", () => {
   it("checks the spacecraft against the published capacity for the orbit", () => {
     const m1 = mission("s1-first-satellite");
     const leo = EARTH_ORBITS[0];
-    expect(capacityCheck(LAUNCHER_BY_ID.electron, m1, leo, 100).ok).toBe(true);
-    expect(capacityCheck(LAUNCHER_BY_ID.electron, m1, leo, 500).ok).toBe(false);
+    expect(capacityCheck(LAUNCHER_BY_ID["lv-small"], m1, leo, 100).ok).toBe(true);
+    expect(capacityCheck(LAUNCHER_BY_ID["lv-small"], m1, leo, 500).ok).toBe(false);
     const moon = mission("s2-lunar-orbiter");
-    expect(capacityCheck(LAUNCHER_BY_ID.electron, moon, MOON_ORBITS[0], 100).ok).toBe(false);
-    expect(capacityCheck(LAUNCHER_BY_ID.saturn5, moon, MOON_ORBITS[0], 20_000).ok).toBe(true);
-    expect(capacityCheck(LAUNCHER_BY_ID.electron, m1, EARTH_ORBITS[3], 100).detail).toMatch(/not rated/);
+    expect(capacityCheck(LAUNCHER_BY_ID["lv-small"], moon, MOON_ORBITS[0], 100).ok).toBe(false);
+    expect(capacityCheck(LAUNCHER_BY_ID["lv-legacy-heavy"], moon, MOON_ORBITS[0], 20_000).ok).toBe(true);
+    expect(capacityCheck(LAUNCHER_BY_ID["lv-small"], m1, EARTH_ORBITS[3], 100).detail).toMatch(/not rated/);
   });
 
   it("flies a mission on a catalogue launcher to the end and records the plan", () => {
-    const f = new Flight(craftOnly(), mission("s1-first-satellite"), 5, { plan: { launcher: "atlas5-401" } });
+    const f = new Flight(craftOnly(), mission("s1-first-satellite"), 5, { plan: { launcher: "lv-medium-heavy" } });
     for (let i = 0; i < 4000 && (f.status === "running" || f.status === "decision"); i++) {
       if (f.status === "decision") f.decide(f.pending!.options.filter((o) => !o.disabled)[0].id);
       else f.step(600);
     }
     expect(f.outcome).not.toBeNull();
-    expect(f.outcome!.plan?.launcher).toBe("Atlas V 401");
+    expect(f.outcome!.plan?.launcher).toBe("Medium-heavy launcher");
     expect(f.outcome!.resources).toBeDefined();
   });
 });

@@ -1,21 +1,22 @@
 /**
- * Live space data from NASA/JPL, fetched by the game server and cached.
+ * Live space data from open government science services, fetched by the game server and cached.
  *
- * JPL's Horizons and Close-Approach services do not allow browsers to call them directly, so the
+ * The ephemeris and close-approach services do not allow browsers to call them directly, so the
  * server makes the request and the game reads it from here. Only these fixed, whitelisted queries
- * are made (Moon and Mars from Horizons, close approaches, four DONKI space weather lists); the
+ * are made (Moon and Mars ephemerides, close approaches, four space-weather lists); the
  * browser cannot choose what the server fetches.
  */
 
 import { buildWeather, type SpaceWeather } from "../src/data/weather";
 
-const HORIZONS = "https://ssd.jpl.nasa.gov/api/horizons.api";
+// Technical endpoints of the public ephemeris, close-approach and space-weather services.
+const EPHEMERIS_API = "https://ssd.jpl.nasa.gov/api/horizons.api";
 const CAD = "https://ssd-api.jpl.nasa.gov/cad.api";
-const DONKI_API = "https://api.nasa.gov/DONKI";
-/** DONKI's own server. Used when the api.nasa.gov gateway does not answer, and it needs no key. */
-const DONKI_CCMC = "https://ccmc.gsfc.nasa.gov/DONKI-API/get";
-const DONKI_KINDS = ["FLR", "CME", "SEP", "GST"] as const;
-type DonkiKind = (typeof DONKI_KINDS)[number];
+const WEATHER_API = "https://api.nasa.gov/DONKI";
+/** The weather service's own server. Used when the api.nasa.gov gateway does not answer, and it needs no key. */
+const WEATHER_API_DIRECT = "https://ccmc.gsfc.nasa.gov/DONKI-API/get";
+const WEATHER_KINDS = ["FLR", "CME", "SEP", "GST"] as const;
+type WeatherKind = (typeof WEATHER_KINDS)[number];
 const SPEED_OF_LIGHT_KMS = 299_792.458;
 const AU_KM = 149_597_870.7;
 const LUNAR_DISTANCE_KM = 384_400;
@@ -63,8 +64,8 @@ export interface SpaceNow {
 
 const num = "([-+]?[0-9]*\\.?[0-9]+(?:[Ee][-+]?[0-9]+)?)";
 
-/** Reads the first position and velocity row from a Horizons vector table. */
-export function parseHorizons(result: string): { pos: [number, number, number]; vel: [number, number, number]; epoch: string } | null {
+/** Reads the first position and velocity row from an ephemeris vector table. */
+export function parseEphemeris(result: string): { pos: [number, number, number]; vel: [number, number, number]; epoch: string } | null {
   const soe = result.indexOf("$$SOE");
   if (soe < 0) return null;
   const block = result.slice(soe, result.indexOf("$$EOE", soe));
@@ -75,15 +76,15 @@ export function parseHorizons(result: string): { pos: [number, number, number]; 
   return { pos: [Number(p[1]), Number(p[2]), Number(p[3])], vel: [Number(v[1]), Number(v[2]), Number(v[3])], epoch: e ? `${e[1].trim()} TDB` : "" };
 }
 
-export function moonFromHorizons(result: string): MoonNow | null {
-  const s = parseHorizons(result);
+export function moonFromEphemeris(result: string): MoonNow | null {
+  const s = parseEphemeris(result);
   if (!s) return null;
   const distanceKm = Math.hypot(...s.pos);
   return { distanceKm, speedKms: Math.hypot(...s.vel), lightTimeS: distanceKm / SPEED_OF_LIGHT_KMS, epoch: s.epoch };
 }
 
-export function marsFromHorizons(result: string): MarsNow | null {
-  const s = parseHorizons(result);
+export function marsFromEphemeris(result: string): MarsNow | null {
+  const s = parseEphemeris(result);
   if (!s) return null;
   const distanceKm = Math.hypot(...s.pos);
   return { distanceKm, lightTimeS: distanceKm / SPEED_OF_LIGHT_KMS, epoch: s.epoch };
@@ -117,21 +118,21 @@ async function getJson<T>(url: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-/** A fixed Horizons vector query from the centre of the Earth, for one body ('301' Moon, '499' Mars). */
-function horizonsUrl(command: string, now: Date): string {
-  return `${HORIZONS}?format=json&COMMAND=%27${command}%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27500@399%27&START_TIME=%27${encodeURIComponent(hz(now))}%27&STOP_TIME=%27${encodeURIComponent(hz(new Date(now.getTime() + 120_000)))}%27&STEP_SIZE=%271%20min%27&VEC_TABLE=%272%27&OUT_UNITS=%27KM-S%27`;
+/** A fixed ephemeris vector query from the centre of the Earth, for one body ('301' Moon, '499' Mars). */
+function ephemerisUrl(command: string, now: Date): string {
+  return `${EPHEMERIS_API}?format=json&COMMAND=%27${command}%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27500@399%27&START_TIME=%27${encodeURIComponent(hz(now))}%27&STOP_TIME=%27${encodeURIComponent(hz(new Date(now.getTime() + 120_000)))}%27&STEP_SIZE=%271%20min%27&VEC_TABLE=%272%27&OUT_UNITS=%27KM-S%27`;
 }
 
 /**
- * One DONKI list for the last 30 days, or null if no server answered with a list.
- * Uses NASA_API_KEY on api.nasa.gov; the shared DEMO_KEY allows only about 30 requests an hour per IP
+ * One space-weather list for the last 30 days, or null if no server answered with a list.
+ * Uses SPACE_DATA_API_KEY on the api.nasa.gov gateway; the shared DEMO_KEY allows only about 30 requests an hour per IP
  * address, which the 30 minute cache below stays well inside. If the gateway fails (it currently
- * returns 404 for flares), DONKI's own server is asked instead.
+ * returns 404 for flares), the service's own server is asked instead.
  */
-async function donki(kind: DonkiKind, now: Date): Promise<unknown | null> {
+async function weatherList(kind: WeatherKind, now: Date): Promise<unknown | null> {
   const range = `startDate=${ymd(new Date(now.getTime() - 30 * 86_400_000))}&endDate=${ymd(now)}`;
-  const key = process.env.NASA_API_KEY || "DEMO_KEY";
-  for (const url of [`${DONKI_API}/${kind}?${range}&api_key=${encodeURIComponent(key)}`, `${DONKI_CCMC}/${kind}?${range}`]) {
+  const key = process.env.SPACE_DATA_API_KEY || "DEMO_KEY";
+  for (const url of [`${WEATHER_API}/${kind}?${range}&api_key=${encodeURIComponent(key)}`, `${WEATHER_API_DIRECT}/${kind}?${range}`]) {
     try {
       const json = await getJson<unknown>(url);
       if (Array.isArray(json)) return json;
@@ -149,23 +150,23 @@ async function build(): Promise<SpaceNow> {
   const now = new Date();
   const cad = `${CAD}?dist-max=0.05&date-min=now&date-max=%2B45&sort=date&limit=8`;
   const [moonRes, marsRes, cadRes, flr, cme, sep, gst] = await Promise.allSettled([
-    getJson<{ result: string }>(horizonsUrl("301", now)),
-    getJson<{ result: string }>(horizonsUrl("499", now)),
+    getJson<{ result: string }>(ephemerisUrl("301", now)),
+    getJson<{ result: string }>(ephemerisUrl("499", now)),
     getJson<CadJson>(cad),
-    ...DONKI_KINDS.map((k) => donki(k, now)),
+    ...WEATHER_KINDS.map((k) => weatherList(k, now)),
   ]);
   const raw = (r: PromiseSettledResult<unknown>) => (r.status === "fulfilled" ? (r.value ?? null) : null);
   const data: SpaceNow = {
     fetchedAt: now.toISOString(),
-    moon: moonRes.status === "fulfilled" ? moonFromHorizons(moonRes.value.result) : null,
-    mars: marsRes.status === "fulfilled" ? marsFromHorizons(marsRes.value.result) : null,
+    moon: moonRes.status === "fulfilled" ?     moonFromEphemeris(moonRes.value.result) : null,
+        mars: marsRes.status === "fulfilled" ? marsFromEphemeris(marsRes.value.result) : null,
     approaches: cadRes.status === "fulfilled" ? approachesFromCad(cadRes.value) : [],
     weather: buildWeather({ flr: raw(flr), cme: raw(cme), sep: raw(sep), gst: raw(gst) }),
     sources: [],
   };
-  if (data.moon || data.mars) data.sources.push("NASA/JPL Horizons System");
-  if (data.approaches.length) data.sources.push("NASA/JPL SBDB Close-Approach Data API");
-  if (data.weather) data.sources.push("NASA DONKI space weather database (CCMC)");
+  if (data.moon || data.mars) data.sources.push("Open ephemeris service");
+  if (data.approaches.length) data.sources.push("Open close-approach service");
+  if (data.weather) data.sources.push("Open space-weather records");
   if (!data.sources.length) throw new Error("No data");
   return data;
 }
@@ -175,7 +176,7 @@ export function peekSpaceNow(): SpaceNow | null {
   return cache?.data ?? null;
 }
 
-/** Latest data, refreshed at most every 30 minutes (10 while a source is missing). If NASA is down, the last good copy is served. */
+/** Latest data, refreshed at most every 30 minutes (10 while a source is missing). If the data services are down, the last good copy is served. */
 export async function spaceNow(): Promise<SpaceNow> {
   if (cache && Date.now() - cache.at < cache.ttl) return cache.data;
   inflight ??= build()

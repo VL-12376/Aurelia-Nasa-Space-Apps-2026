@@ -13,24 +13,24 @@ function httpBase(): string {
 let cached: { at: number; data: SpaceNow } | null = null;
 
 /**
- * Live NASA/JPL data from GET /api/space, cached by the server for 30 minutes (10 while a source is missing).
- * The server fetches it (browsers are not allowed to call JPL) and any source can be missing, so every
+ * Live space-science data from GET /api/space, cached by the server for 30 minutes (10 while a source is missing).
+ * The server fetches it (browsers are not allowed to call the data services) and any source can be missing, so every
  * field except fetchedAt and sources can be null or empty. The screen says so instead of showing made-up numbers.
  *
  * Payload (SpaceNow):
  *   fetchedAt  ISO time the server built it
- *   sources    names of the NASA/JPL services that answered
- *   moon       { distanceKm, speedKms, lightTimeS, epoch } | null   JPL Horizons, from Earth's centre
- *   mars       { distanceKm, lightTimeS, epoch } | null             JPL Horizons, lightTimeS is the one-way radio delay
- *   approaches [{ name, date, distanceKm, distanceLd, speedKms, h, diameterM }]   JPL close approaches
- *   weather    NASA DONKI space weather, or null if DONKI could not be reached at all:
+ *   sources    generic names of the services that answered (not shown to players)
+ *   moon       { distanceKm, speedKms, lightTimeS, epoch } | null   ephemeris data, from Earth's centre
+ *   mars       { distanceKm, lightTimeS, epoch } | null             ephemeris data, lightTimeS is the one-way radio delay
+ *   approaches [{ name, date, distanceKm, distanceLd, speedKms, h, diameterM }]   asteroid close approaches
+ *   weather    open space weather records, or null if they could not be reached at all:
  *     flares            [{ classType, peakTime, activeRegion? }]  latest 5 in 30 days, newest first. "M1.3", "2026-10-16T15:42Z"
  *     flareCount30d     number | null   flares in 30 days (null = flare source unavailable)
  *     cmeCount30d       number | null   coronal mass ejections in 30 days (null = unavailable)
  *     sepCount30d       number | null   solar energetic particle events in 30 days (null = unavailable)
  *     geomagneticMaxKp  number?         highest Kp of any geomagnetic storm in 30 days; absent if none
  *     activity          number          0.5 (quiet Sun) to 2.0 (stormy), 1.0 if flare data is unavailable.
- *                                       An educational factor from data/weather.ts, not a NASA measure.
+ *                                       An educational factor from data/weather.ts, not an official measure.
  * For the flight simulation, use weather.activity as the risk multiplier and weather.flares[0] for the latest-flare text.
  * Returns null if the server is not reachable.
  */

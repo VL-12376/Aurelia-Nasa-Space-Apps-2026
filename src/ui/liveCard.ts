@@ -16,9 +16,9 @@ function weatherBlock(w: SpaceWeather): Node[] {
     h(
       "ul",
       { class: "hq3-list live-list" },
-      h("li", { title: "GOES X-ray class: C is common, M is strong, X is the strongest. Each letter is ten times the one before." }, h("span", { class: "mono" }, "Latest flare"), h("span", { class: "muted small" }, latest ? `${describeFlare(latest)}${latest.activeRegion ? ` · active region ${latest.activeRegion}` : ""}` : w.flareCount30d === null ? "not available right now" : "none recorded")),
+      h("li", { title: "X-ray flare class: C is common, M is strong, X is the strongest. Each letter is ten times the one before." }, h("span", { class: "mono" }, "Latest flare"), h("span", { class: "muted small" }, latest ? `${describeFlare(latest)}${latest.activeRegion ? ` · active region ${latest.activeRegion}` : ""}` : w.flareCount30d === null ? "not available right now" : "none recorded")),
       h("li", null, h("span", { class: "mono" }, "Events"), h("span", { class: "muted small" }, `${count(w.flareCount30d, "flare", "flares")} · ${count(w.cmeCount30d, "CME", "CMEs")} · ${count(w.sepCount30d, "particle event", "particle events")}${w.geomagneticMaxKp !== undefined ? ` · geomagnetic storm up to Kp ${w.geomagneticMaxKp}` : ""}`)),
-      h("li", { title: "AURELIA's own scale from 0.5 to 2.0, worked out from the sizes of the recent real flares. It is a teaching model, not a NASA measure." }, h("span", { class: "mono" }, `Game activity factor ${w.activity.toFixed(2)}`), h("span", { class: "muted small" }, `${act.label}. ${act.text}`)),
+      h("li", { title: "AURELIA's own scale from 0.5 to 2.0, worked out from the sizes of the recent real flares. It is a teaching model, not an official measure." }, h("span", { class: "mono" }, `Game activity factor ${w.activity.toFixed(2)}`), h("span", { class: "muted small" }, `${act.label}. ${act.text}`)),
     ),
     h("p", { class: "muted small" }, "CME: a cloud of solar plasma thrown into space. Particle event: fast protons from the Sun, the radiation crews must shelter from. The activity factor is AURELIA's teaching model."),
   ];
@@ -26,7 +26,7 @@ function weatherBlock(w: SpaceWeather): Node[] {
 
 function render(host: HTMLElement, data: SpaceNow | null): void {
   if (!data) {
-    host.replaceChildren(h("p", { class: "muted small" }, "Live NASA/JPL data comes through the game server, which is not reachable right now. Locally, start it with npm run server. On the public game it may be waking up; open this screen again in a minute."));
+    host.replaceChildren(h("p", { class: "muted small" }, "Live space-science data comes through the game server, which is not reachable right now. Locally, start it with npm run server. On the public game it may be waking up; open this screen again in a minute."));
     return;
   }
   const rows: (Node | null)[] = [];
@@ -61,12 +61,12 @@ function render(host: HTMLElement, data: SpaceNow | null): void {
       h("p", { class: "muted small" }, "All of these pass safely. Tracking them is how we know nothing is coming."),
     );
   }
-  host.replaceChildren(...rows.filter((r): r is Node => r !== null), h("p", { class: "muted small live-src" }, `Source: ${data.sources.join("; ")}. Updated ${data.fetchedAt.slice(11, 16)} UTC.`), h("p", { class: "muted small" }, DISCLAIMER));
+  host.replaceChildren(...rows.filter((r): r is Node => r !== null), h("p", { class: "muted small live-src" }, `Source: open government space-science data, refreshed through the game server. Updated ${data.fetchedAt.slice(11, 16)} UTC.`), h("p", { class: "muted small" }, DISCLAIMER));
 }
 
-/** A card that fills itself with live NASA/JPL data. */
+/** A card that fills itself with live space-science data. */
 export function liveSpaceCard(): HTMLElement {
-  const body = h("div", { class: "live-body" }, h("p", { class: "muted small" }, "Contacting NASA/JPL…"));
+  const body = h("div", { class: "live-body" }, h("p", { class: "muted small" }, "Contacting the data service…"));
   const el = h("section", { class: "hq3-card live-card" }, h("h4", null, "Space right now", h("span", { class: "live-dot", title: "Live data" }, "LIVE")), body);
   void loadSpaceNow().then((d) => render(body, d));
   return el;

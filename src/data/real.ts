@@ -1,36 +1,26 @@
 /**
  * Real reference data used across the game and the Academy.
  *
- * Everything here comes from NASA and JPL public sources, rounded for teaching. Where a value is
- * approximate it says so. Nothing in this file is invented. AURELIA is an independent game and is
- * not affiliated with or endorsed by NASA.
+ * Everything here comes from public-domain government space-science data and published research,
+ * rounded for teaching. Where a value is approximate it says so. Nothing in this file is invented.
+ * AURELIA is an independent game.
  */
 
 export const SOURCES = [
-  { name: "NASA/JPL Horizons System", use: "Live position of the Moon and Mars", url: "https://ssd.jpl.nasa.gov/horizons/" },
-  { name: "NASA/JPL SBDB Close-Approach Data API", use: "Live asteroid close approaches", url: "https://ssd-api.jpl.nasa.gov/doc/cad.html" },
-  { name: "NASA DONKI (Space Weather Database Of Notifications, Knowledge, Information)", use: "Live solar flares, coronal mass ejections and storms", url: "https://ccmc.gsfc.nasa.gov/tools/DONKI/" },
-  { name: "NASA Open APIs portal (api.nasa.gov)", use: "API key and gateway for the space weather data", url: "https://api.nasa.gov/" },
-  { name: "NASA Image and Video Library", use: "Pictures of the real missions", url: "https://images.nasa.gov/" },
-  { name: "NASA 3D Resources", use: "Real spacecraft models to explore (linked, not included in the game)", url: "https://science.nasa.gov/3d-resources/" },
-  { name: "NASA Artemis", use: "Artemis I, II and III facts", url: "https://www.nasa.gov/humans-in-space/artemis/" },
-  { name: "NASA Human Research Program", use: "Radiation, fatigue and crew health", url: "https://www.nasa.gov/hrp/" },
-  { name: "George et al. 2024, Nature: space radiation measurements during Artemis I", use: "Measured dose rates in Orion, on the ISS and on Mars", url: "https://doi.org/10.1038/s41586-024-07927-7" },
-  { name: "NASA/JPL release (2013, mirrored by ScienceDaily): radiation measured by Curiosity on the voyage to Mars", use: "Radiation inside a Mars-bound spacecraft", url: "https://www.sciencedaily.com/releases/2013/05/130530145930.htm" },
-  { name: "NASA-STD-3001 Technical Brief: Design for Ionizing Radiation Protection", use: "NASA's career dose limit for astronauts", url: "https://www.nasa.gov/wp-content/uploads/2023/12/ochmo-tb-020-radiation-protection.pdf" },
-  { name: "NASA NSSDCA Planetary Fact Sheets", use: "Planet and Moon measurements", url: "https://nssdc.gsfc.nasa.gov/planetary/factsheet/" },
-  { name: "NASA General Mission Analysis Tool (GMAT)", use: "How real trajectories are designed", url: "https://software.nasa.gov/software/GSC-19468-1" },
-  { name: "JPL Concept Maturity Levels (Wessen et al., 2013, AIAA)", use: "The step-by-step path a mission concept follows", url: "https://dataverse.jpl.nasa.gov/dataset.xhtml?persistentId=hdl:2014/44299" },
-  { name: "NASA Goddard Mission Design Lab", use: "How teams design a mission together", url: "https://etd.gsfc.nasa.gov/capabilities/integrated-design-center/mission-design-lab/" },
-  { name: "NASA Web-based Space Mission Visualization", use: "Orbit and transfer visualisation ideas", url: "https://nasa.github.io/mission-viz/" },
-  { name: "NASA Webb: Build It Yourself", use: "Science requirements drive spacecraft design", url: "https://science.nasa.gov/mission/webb/game-build-it-yourself/" },
-  { name: "NASA Apollo 11 Flight Journal and mission reports", use: "Launch and mission event times", url: "https://www.nasa.gov/history/afj/ap11fj/index.html" },
+  { name: "Open ephemeris data", use: "Live position of the Moon and Mars" },
+  { name: "Open asteroid close-approach data", use: "Live asteroid close approaches" },
+  { name: "Open space-weather records", use: "Live solar flares, coronal mass ejections and storms" },
+  { name: "Published research measurements", use: "Measured radiation dose rates in deep space, in low Earth orbit and on Mars" },
+  { name: "Published crew-health guidance", use: "Radiation, fatigue and the career dose limit for astronauts" },
+  { name: "Open planetary fact sheets", use: "Planet and Moon measurements" },
+  { name: "Public mission-design literature", use: "How real trajectories are designed, and the step-by-step path a mission concept follows" },
+  { name: "Public mission records and flight logs", use: "Launch and mission event times, and facts about real missions" },
 ] as const;
 
-export const DISCLAIMER = "Contains data from NASA and JPL public sources. AURELIA is an independent game and is not affiliated with or endorsed by NASA.";
+export const DISCLAIMER = "Real figures come from public-domain government space-science data and published research. AURELIA is an independent game.";
 
 /* ------------------------------------------------------------------ */
-/* How a real mission matures: JPL Concept Maturity Levels (CML)        */
+/* How a real mission matures: concept maturity levels                  */
 /* ------------------------------------------------------------------ */
 
 export interface MaturityLevel {
@@ -47,7 +37,7 @@ export const MATURITY: MaturityLevel[] = [
   { level: 1, name: "Cocktail napkin", real: "A sketch of the idea: what do we want to learn, and where do we go?", game: "Read a mission briefing and decide which mission to attempt.", where: "briefing" },
   { level: 2, name: "Initial feasibility", real: "Back-of-the-envelope maths shows the idea is not impossible: how much delta-v, how much mass?", game: "Check the delta-v budget and use the rocket equation to see if a rocket could do it.", where: "academy" },
   { level: 3, name: "Trade space", real: "Compare many options (bigger tank or more engines, one stage or two) and learn which choices matter.", game: "Try different tanks, engines and stages in the Hangar and watch the numbers change.", where: "hangar" },
-  { level: 4, name: "Point design", real: "One complete design with mass, power and cost estimates. At NASA Goddard this is what a Mission Design Lab study produces.", game: "Finish a design that meets every check, then build it.", where: "hangar" },
+  { level: 4, name: "Point design", real: "One complete design with mass, power and cost estimates. At a large space agency this is what a mission design lab study produces.", game: "Finish a design that meets every check, then build it.", where: "hangar" },
   { level: 5, name: "Concept baseline", real: "The design is checked against requirements, with margins held in reserve for surprises.", game: "Pass every launch check and keep spare delta-v and budget.", where: "briefing" },
   { level: 6, name: "Flight", real: "After formal design reviews the spacecraft is built, launched and operated.", game: "Launch, fly the mission and make decisions when things go wrong.", where: "control" },
 ];
@@ -66,11 +56,11 @@ export interface DeltaVLeg {
 /** Commonly used mission-design values (rounded). Real missions vary with the orbit chosen. */
 export const DELTA_V_MAP: DeltaVLeg[] = [
   { id: "launch", label: "Earth surface to low Earth orbit", kms: 9.4, note: "7.8 km/s of orbital speed plus about 1.6 km/s lost to gravity and air drag on the way up." },
-  { id: "tli", label: "Low Earth orbit to the Moon (trans-lunar injection)", kms: 3.1, note: "Apollo's third stage burned about 6 minutes to do this." },
-  { id: "loi", label: "Capture into lunar orbit", kms: 0.9, note: "Apollo 11 braked for about 6 minutes to be captured by the Moon." },
+  { id: "tli", label: "Low Earth orbit to the Moon (trans-lunar injection)", kms: 3.1, note: "A 1960s super-heavy rocket's third stage burned about 6 minutes to do this." },
+  { id: "loi", label: "Capture into lunar orbit", kms: 0.9, note: "The first crewed lunar landing braked for about 6 minutes to be captured by the Moon." },
   { id: "descent", label: "Lunar orbit to the surface", kms: 1.7, note: "A powered landing, because the Moon has no air to help." },
   { id: "ascent", label: "Lunar surface to lunar orbit", kms: 1.9, note: "The only way home is to climb back up." },
-  { id: "tei", label: "Lunar orbit back toward Earth", kms: 1.0, note: "Apollo's trans-Earth injection burn." },
+  { id: "tei", label: "Lunar orbit back toward Earth", kms: 1.0, note: "The trans-Earth injection burn of a 1960s lunar mission." },
   { id: "tmi", label: "Low Earth orbit to Mars (trans-Mars injection)", kms: 3.6, note: "Can only be done in the right launch window, about every 26 months." },
   { id: "moi", label: "Capture into Mars orbit", kms: 2.1, note: "Anywhere from about 0.9 to 2.1 km/s depending on the orbit chosen." },
   { id: "escape", label: "Low Earth orbit to leaving Earth entirely", kms: 3.2, note: "Earth escape speed from 300 km up is about 10.9 km/s, and orbit already gives 7.7." },
@@ -111,21 +101,21 @@ export interface RealVehicle {
 
 export const REAL_VEHICLES: RealVehicle[] = [
   {
-    id: "saturn-v", name: "Saturn V", program: "Apollo", heightM: 110.6, liftoffMassT: 2_970, liftoffThrustMN: 34.5, leoT: 140, tliT: 48.6,
+    id: "super-heavy-1960s", name: "A 1960s super-heavy three-stage rocket", program: "Crewed lunar programme of the 1960s and 70s", heightM: 110.6, liftoffMassT: 2_970, liftoffThrustMN: 34.5, leoT: 140, tliT: 48.6,
     blurb: "The only rocket that has sent people beyond low Earth orbit. Three stages, 13 engines, 13 flights between 1967 and 1973.",
     payloadT: 50,
     stages: [
-      { name: "S-IC (first stage)", engines: "5 × F-1, kerosene and liquid oxygen", propellantT: 2_150, dryT: 135, isp: 282, thrustMN: 38 },
-      { name: "S-II (second stage)", engines: "5 × J-2, liquid hydrogen and liquid oxygen", propellantT: 460, dryT: 36, isp: 421, thrustMN: 5.1 },
-      { name: "S-IVB (third stage)", engines: "1 × J-2, liquid hydrogen and liquid oxygen", propellantT: 106, dryT: 13.5, isp: 421, thrustMN: 1.0 },
+      { name: "First stage", engines: "5 × kerosene and liquid oxygen engines", propellantT: 2_150, dryT: 135, isp: 282, thrustMN: 38 },
+      { name: "Second stage", engines: "5 × liquid hydrogen and liquid oxygen engines", propellantT: 460, dryT: 36, isp: 421, thrustMN: 5.1 },
+      { name: "Third stage", engines: "1 × liquid hydrogen and liquid oxygen engine", propellantT: 106, dryT: 13.5, isp: 421, thrustMN: 1.0 },
     ],
   },
-  { id: "shuttle", name: "Space Shuttle", program: "Space Shuttle", heightM: 56, liftoffMassT: 2_030, liftoffThrustMN: 30.2, leoT: 27.5, blurb: "The first reusable orbital vehicle: two solid boosters and three main engines fed from an external tank. 135 flights from 1981 to 2011." },
-  { id: "sls", name: "Space Launch System Block 1", program: "Artemis", heightM: 98, liftoffMassT: 2_600, liftoffThrustMN: 39.1, leoT: 95, tliT: 27, blurb: "NASA's heavy launcher for Artemis, with 8.8 million pounds (39.1 MN) of thrust at liftoff. It has flown twice: Artemis I (uncrewed, 16 November 2022) and Artemis II (crewed, 1 April 2026). 27 tonnes is what it can send toward the Moon with Orion." },
+  { id: "winged-orbiter", name: "A reusable-era winged orbiter", program: "Reusable orbiter programme (1981 to 2011)", heightM: 56, liftoffMassT: 2_030, liftoffThrustMN: 30.2, leoT: 27.5, blurb: "The first reusable orbital vehicle: two solid boosters and three main engines fed from an external tank. 135 flights from 1981 to 2011." },
+  { id: "modern-heavy-lift", name: "A modern heavy-lift rocket", program: "Crewed lunar campaign of the 2020s", heightM: 98, liftoffMassT: 2_600, liftoffThrustMN: 39.1, leoT: 95, tliT: 27, blurb: "A heavy launcher for crewed lunar missions, with 8.8 million pounds (39.1 MN) of thrust at liftoff. It has flown twice: an uncrewed test (16 November 2022) and a crewed lunar flyby (1 April 2026). 27 tonnes is what it can send toward the Moon with a crew capsule." },
 ];
 
-/** Orion, the crew spacecraft that rides on top of SLS. NASA "Orion by the numbers" and the Orion overview page. */
-export const ORION = {
+/** The crew capsule that rides on top of the modern heavy-lift rocket, from published vehicle figures. */
+export const CREW_CAPSULE = {
   crew: 4,
   /** Longest mission the crew module is designed for, days. */
   maxDays: 21,
@@ -133,15 +123,15 @@ export const ORION = {
   /** Mass sent toward the Moon, kg. */
   tliMassKg: 26_536,
   stackHeightM: 20.4,
-  note: "Orion has three parts: a crew module (where the astronauts live), a European-built service module (power, propulsion, air and water) and a launch abort system.",
+  note: "The capsule has three parts: a crew module (where the astronauts live), a service module (power, propulsion, air and water) and a launch abort system.",
 };
 
-/** Where the Artemis campaign stands, from NASA's Artemis pages as read in November 2026. */
-export const ARTEMIS_CAMPAIGN: { name: string; when: string; what: string }[] = [
-  { name: "Artemis I", when: "16 November to 11 December 2022", what: "Uncrewed test of SLS and Orion. 25 days 10 hours 53 minutes, 268,563 miles (about 432,000 km) from Earth at the farthest. Orion completed 161 test objectives. Engineers studied unexpected char loss on the heat shield and changed the Artemis II re-entry path because of it." },
-  { name: "Artemis II", when: "1 to 10 April 2026", what: "The first crewed flight: four astronauts looped around the Moon in 9 days 1 hour 32 minutes, passing 4,067 miles (about 6,545 km) above the lunar surface and reaching 252,756 miles from Earth, the farthest humans have travelled. NASA reports the heat shield performed as expected, with far less char loss than Artemis I." },
-  { name: "Artemis III", when: "Planned for 2027", what: "A crewed test in low Earth orbit of rendezvous and docking between Orion and test versions of commercial lunar landers, to reduce risk before a landing." },
-  { name: "Artemis IV", when: "Planned for 2028", what: "NASA's goal for the first crewed Moon landing of the Artemis programme: the crew moves from Orion into a commercial lander for the trip to the surface." },
+/** Where the crewed lunar campaign of the 2020s stands, from public records as read in November 2026. */
+export const LUNAR_CAMPAIGN: { name: string; when: string; what: string }[] = [
+  { name: "Uncrewed test flight", when: "16 November to 11 December 2022", what: "Uncrewed test of the heavy-lift rocket and crew capsule. 25 days 10 hours 53 minutes, 268,563 miles (about 432,000 km) from Earth at the farthest. The capsule completed 161 test objectives. Engineers studied unexpected char loss on the heat shield and changed the re-entry path of the next flight because of it." },
+  { name: "Crewed lunar flyby", when: "1 to 10 April 2026", what: "The first crewed flight: four astronauts looped around the Moon in 9 days 1 hour 32 minutes, passing 4,067 miles (about 6,545 km) above the lunar surface and reaching 252,756 miles from Earth, the farthest humans have travelled. The heat shield performed as expected, with far less char loss than on the uncrewed flight." },
+  { name: "Docking rehearsal", when: "Planned for 2027", what: "A crewed test in low Earth orbit of rendezvous and docking between the capsule and test versions of commercial lunar landers, to reduce risk before a landing." },
+  { name: "First landing of the campaign", when: "Planned for 2028", what: "The goal for the first crewed Moon landing of the campaign: the crew moves from the capsule into a commercial lander for the trip to the surface." },
 ];
 
 /** Ideal (no gravity or drag loss) speed change of a stage stack, km/s, by the rocket equation. */
@@ -157,7 +147,7 @@ export function stackDeltaV(stages: RealStage[], payloadT: number): { perStage: 
 }
 
 /* ------------------------------------------------------------------ */
-/* Apollo 11: a real launch and mission, event by event                */
+/* A real launch and mission of the 1960s, event by event              */
 /* ------------------------------------------------------------------ */
 
 export interface RealEvent {
@@ -167,26 +157,26 @@ export interface RealEvent {
   explain: string;
 }
 
-/** Approximate times from the Apollo 11 mission report and Flight Journal. */
-export const APOLLO11_ASCENT: RealEvent[] = [
-  { t: -9, label: "Ignition sequence starts", explain: "The five F-1 engines light one after another while the rocket is still held down, so the computers can check each one before release." },
-  { t: 0, label: "Liftoff", explain: "Thrust now exceeds weight. The Saturn V's 2,970 tonnes begin to rise, slowly at first, burning about 13 tonnes of propellant every second." },
+/** Approximate times from the published mission report and flight log of the first crewed lunar landing. */
+export const CREWED_LUNAR_ASCENT: RealEvent[] = [
+  { t: -9, label: "Ignition sequence starts", explain: "The five first-stage engines light one after another while the rocket is still held down, so the computers can check each one before release." },
+  { t: 0, label: "Liftoff", explain: "Thrust now exceeds weight. The rocket's 2,970 tonnes begin to rise, slowly at first, burning about 13 tonnes of propellant every second." },
   { t: 12, label: "Tower cleared", explain: "The rocket is high enough to clear the launch tower and begins to roll and pitch toward its flight direction (east, to use Earth's spin)." },
   { t: 83, label: "Max Q", explain: "Maximum dynamic pressure: the rocket is fast enough and the air still thick enough to push on it with about 35 kilopascals. The structure is at its most stressed." },
   { t: 135, label: "Centre engine cut off", explain: "One of the five engines shuts down to keep acceleration from rising too high as the rocket gets lighter." },
   { t: 162, label: "First stage separation", explain: "The empty first stage (135 tonnes of dead weight) is dropped. The rocket is about 67 km up and moving at roughly 2.4 km/s." },
-  { t: 164, label: "Second stage ignites", explain: "Five J-2 engines light. Staging works because you stop carrying the empty tank." },
+  { t: 164, label: "Second stage ignites", explain: "Five engines light. Staging works because you stop carrying the empty tank." },
   { t: 198, label: "Launch escape tower jettisoned", explain: "Above the thick air, the emergency escape rocket is no longer needed and is dropped to save mass." },
   { t: 548, label: "Second stage cut off", explain: "The second stage has delivered nearly all the speed needed. It is dropped and the third stage takes over." },
   { t: 700, label: "Orbit reached", explain: "About 185 km up, moving at roughly 7.8 km/s sideways. The crew is in orbit and has time to check everything before committing to the Moon." },
 ];
 
-export const APOLLO11_MISSION: RealEvent[] = [
-  { t: 0, label: "Launch (16 July 1969)", explain: "Saturn V from Kennedy Space Center, 13:32 UTC." },
+export const CREWED_LUNAR_MISSION: RealEvent[] = [
+  { t: 0, label: "Launch (16 July 1969)", explain: "A super-heavy rocket lifts off from a coastal launch site in Florida at 13:32 UTC." },
   { t: 2 * 3600 + 44 * 60, label: "Trans-lunar injection", explain: "Third-stage burn of about 6 minutes adds roughly 3.1 km/s and sends the spacecraft toward the Moon." },
   { t: 75 * 3600 + 50 * 60, label: "Lunar orbit insertion", explain: "A braking burn of about 6 minutes lets the Moon capture the spacecraft." },
-  { t: 102 * 3600 + 46 * 60, label: "Landing at Tranquility Base", explain: "Eagle touches down on 20 July at about 20:17 UTC, about 3 days after launch." },
-  { t: 195 * 3600 + 19 * 60, label: "Splashdown", explain: "The Command Module returns to the Pacific on 24 July, after 8 days." },
+  { t: 102 * 3600 + 46 * 60, label: "Landing at Tranquility Base", explain: "The lander touches down on 20 July at about 20:17 UTC, about 3 days after launch." },
+  { t: 195 * 3600 + 19 * 60, label: "Splashdown", explain: "The command module returns to the Pacific on 24 July, after 8 days." },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -201,40 +191,36 @@ export interface RealMission {
   destination: string;
   facts: [string, string][];
   notice: string;
-  /** Search words for the NASA Image Library, when the mission name alone finds a poor picture. */
-  imageQuery?: string;
 }
 
 export const REAL_MISSIONS: RealMission[] = [
   {
-    id: "apollo11", name: "Apollo 11", year: "1969", vehicle: "Saturn V", destination: "The Moon (landing)",
+    id: "first-landing", name: "The first crewed lunar landing", year: "1969", vehicle: "A super-heavy three-stage rocket", destination: "The Moon (landing)",
     facts: [["Launch", "16 July 1969"], ["Landing", "20 July 1969, Sea of Tranquility"], ["Duration", "8 days, 3 hours, 18 minutes"], ["Time on the surface", "About 21.5 hours"]],
     notice: "A direct trip took about 3 days because the trajectory was planned precisely, with only small mid-course corrections.",
   },
   {
-    id: "artemis1", name: "Artemis I", year: "2022", vehicle: "Space Launch System", destination: "Lunar distant retrograde orbit",
+    id: "uncrewed-lunar-test", name: "An uncrewed lunar test flight", year: "2022", vehicle: "A modern heavy-lift rocket", destination: "Lunar distant retrograde orbit",
     facts: [["Launch", "16 November 2022"], ["Duration", "About 25.5 days"], ["Closest to the Moon", "About 130 km"], ["Farthest from Earth", "About 432,000 km, a record for a crew-rated capsule"]],
     notice: "An uncrewed test: engineers learn how the vehicle behaves before people fly on it.",
-    imageQuery: "Artemis I Orion Moon",
   },
   {
-    id: "artemis2", name: "Artemis II", year: "2026", vehicle: "Space Launch System", destination: "Crewed lunar flyby (free return)",
-    facts: [["Launch", "1 April 2026"], ["Splashdown", "10 April 2026"], ["Duration", "9 days, 1 hour, 32 minutes"], ["Crew", "4 astronauts: 3 NASA, 1 CSA"], ["Closest to the Moon", "4,067 miles (about 6,545 km) above the surface"], ["Farthest from Earth", "252,756 miles (about 406,800 km), a record for humans"]],
-    notice: "The first people to fly Orion. A free-return path swings round the Moon and heads back to Earth with no braking burn at the Moon: lunar gravity does the turning.",
-    imageQuery: "Artemis II Orion splashdown",
+    id: "crewed-lunar-flyby", name: "A crewed lunar flyby", year: "2026", vehicle: "A modern heavy-lift rocket", destination: "Crewed lunar flyby (free return)",
+    facts: [["Launch", "1 April 2026"], ["Splashdown", "10 April 2026"], ["Duration", "9 days, 1 hour, 32 minutes"], ["Crew", "4 astronauts, from two countries"], ["Closest to the Moon", "4,067 miles (about 6,545 km) above the surface"], ["Farthest from Earth", "252,756 miles (about 406,800 km), a record for humans"]],
+    notice: "The first people to fly this capsule. A free-return path swings round the Moon and heads back to Earth with no braking burn at the Moon: lunar gravity does the turning.",
   },
   {
-    id: "perseverance", name: "Mars 2020 Perseverance", year: "2020", vehicle: "Atlas V 541", destination: "Mars, Jezero Crater",
+    id: "mars-rover-2020", name: "A Mars rover with a sample-caching drill", year: "2020", vehicle: "A medium-lift expendable rocket", destination: "Mars, Jezero Crater",
     facts: [["Launch", "30 July 2020"], ["Landing", "18 February 2021"], ["Flight time", "About 203 days"], ["Distance travelled", "About 470 million km"]],
     notice: "It left in a launch window that opens only about every 26 months, when Earth and Mars are lined up for the cheapest transfer.",
   },
   {
-    id: "voyager1", name: "Voyager 1", year: "1977", vehicle: "Titan IIIE-Centaur", destination: "Interstellar space",
+    id: "grand-tour-probe", name: "A 1970s grand-tour probe", year: "1977", vehicle: "A heavy expendable rocket with an upper stage", destination: "Interstellar space",
     facts: [["Launch", "5 September 1977"], ["Jupiter flyby", "5 March 1979"], ["Saturn flyby", "12 November 1980"], ["Interstellar space", "Crossed into it in 2012"]],
     notice: "Gravity assists from Jupiter and Saturn gave it speed for free, using planets as slingshots.",
   },
   {
-    id: "webb", name: "James Webb Space Telescope", year: "2021", vehicle: "Ariane 5", destination: "Sun–Earth L2 point",
+    id: "infrared-telescope", name: "A large infrared space telescope", year: "2021", vehicle: "A heavy expendable rocket", destination: "Sun–Earth L2 point",
     facts: [["Launch", "25 December 2021"], ["Arrival at L2", "About 30 days later"], ["Distance", "About 1.5 million km from Earth"], ["Mirror", "6.5 m across, 18 gold-coated segments"]],
     notice: "Science requirements drove the design: infrared astronomy needs a very cold telescope, so it carries a five-layer sunshield.",
   },
@@ -242,67 +228,63 @@ export const REAL_MISSIONS: RealMission[] = [
 
 /** A real mission that matches each AURELIA mission. */
 export interface RealParallel {
-  mission: string;
   name: string;
   year: string;
   vehicle: string;
   text: string;
   facts: [string, string][];
-  /** Search words for the NASA Image Library, when the mission name alone finds a poor picture. */
-  imageQuery?: string;
 }
 
 export const REAL_PARALLELS: Record<string, RealParallel> = {
   "s1-first-satellite": {
-    mission: "Explorer 1", name: "Explorer 1", year: "1958", vehicle: "Juno I (Jupiter-C)",
-    text: "The first US satellite. It weighed only 14 kg, yet its instrument discovered the Van Allen radiation belts around Earth.",
+    name: "The first US satellite", year: "1958", vehicle: "a small four-stage rocket",
+    text: "The first US satellite. It weighed only 14 kg, yet its instrument discovered the radiation belts around Earth.",
     facts: [["Launched", "31 January 1958"], ["Mass", "About 14 kg"], ["Orbit", "About 360 × 2,500 km"]],
   },
   "s1-earth-watch": {
-    mission: "Landsat 9", name: "Landsat 9", year: "2021", vehicle: "Atlas V 401",
-    text: "Landsat satellites have photographed the whole Earth every 16 days for decades, in a sun-synchronous orbit so every picture has similar lighting.",
-    facts: [["Launched", "27 September 2021"], ["Altitude", "About 705 km"], ["Repeat cycle", "16 days"]],
+    name: "A long-running Earth-observation satellite series", year: "2021", vehicle: "a medium-lift expendable rocket",
+    text: "This satellite series has photographed the whole Earth every 16 days for decades, in a sun-synchronous orbit so every picture has similar lighting.",
+    facts: [["Latest launch", "27 September 2021"], ["Altitude", "About 705 km"], ["Repeat cycle", "16 days"]],
   },
   "s2-lunar-orbiter": {
-    mission: "Lunar Reconnaissance Orbiter", name: "Lunar Reconnaissance Orbiter", year: "2009", vehicle: "Atlas V 401",
-    text: "LRO has mapped the Moon in detail, including Apollo landing sites and shadowed polar craters that may hold water ice.",
+    name: "A lunar mapping orbiter", year: "2009", vehicle: "a medium-lift expendable rocket",
+    text: "This orbiter has mapped the Moon in detail, including the landing sites of the 1960s and 70s and shadowed polar craters that may hold water ice.",
     facts: [["Launched", "18 June 2009"], ["Reached the Moon", "5 days later"], ["Orbit", "Polar, about 50 km up"]],
   },
   "s2-lunar-lander": {
-    mission: "Surveyor 1", name: "Surveyor 1", year: "1966", vehicle: "Atlas-Centaur",
-    text: "The first US soft landing on the Moon. Its pictures and measurements showed the surface was firm enough for the Apollo landers.",
+    name: "The first US soft lander on the Moon", year: "1966", vehicle: "a medium-lift rocket with a hydrogen upper stage",
+    text: "The first US soft landing on the Moon. Its pictures and measurements showed the surface was firm enough for crewed landers.",
     facts: [["Launched", "30 May 1966"], ["Landed", "2 June 1966"], ["Why it mattered", "It proved a soft landing was possible"]],
   },
   "s2-lunar-rover": {
-    mission: "Apollo Lunar Roving Vehicle", name: "Apollo Lunar Roving Vehicle", year: "1971", vehicle: "Carried by the lunar module",
-    text: "A folding electric car that let Apollo 15, 16 and 17 astronauts travel kilometres from their landing sites to sample different terrain.",
-    facts: [["First drive", "31 July 1971 (Apollo 15)"], ["Top speed", "About 13 km/h"], ["Power", "Silver-zinc batteries"]],
+    name: "A folding electric lunar rover", year: "1971", vehicle: "carried by a crewed lunar lander",
+    text: "A folding electric car that let astronauts on the last three crewed lunar landings travel kilometres from their landing sites to sample different terrain.",
+    facts: [["First drive", "31 July 1971"], ["Top speed", "About 13 km/h"], ["Power", "Silver-zinc batteries"]],
   },
   "s3-mars-orbiter": {
-    mission: "Mars Reconnaissance Orbiter", name: "Mars Reconnaissance Orbiter", year: "2005", vehicle: "Atlas V 401",
+    name: "A high-resolution Mars orbiter", year: "2005", vehicle: "a medium-lift expendable rocket",
     text: "Its camera can see objects the size of a kitchen table from orbit, and it relays data from the rovers on the surface.",
     facts: [["Launched", "12 August 2005"], ["Arrived", "10 March 2006"], ["Flight time", "About 7 months"]],
   },
   "s3-mars-lander": {
-    mission: "Viking 1", name: "Viking 1", year: "1976", vehicle: "Titan IIIE-Centaur",
+    name: "The first US lander to work on Mars", year: "1976", vehicle: "a heavy expendable rocket with an upper stage",
     text: "The first US lander to work on Mars. It used a heat shield, a parachute and retro-rockets, the same steps modern landers use.",
     facts: [["Landed", "20 July 1976"], ["Landing steps", "Heat shield, parachute, engines"], ["Radio delay", "Many minutes, so landing is fully automatic"]],
   },
   "s3-sample-collection": {
-    mission: "Mars 2020 Perseverance", name: "Mars 2020 Perseverance", year: "2020", vehicle: "Atlas V 541",
-    text: "Perseverance drills rock cores and seals them in tubes so that they can be returned to Earth and studied in laboratories.",
+    name: "A Mars rover with a sample-caching drill", year: "2020", vehicle: "a medium-lift expendable rocket",
+    text: "This rover drills rock cores and seals them in tubes so that they can be returned to Earth and studied in laboratories.",
     facts: [["Landed", "18 February 2021"], ["Site", "Jezero Crater, an ancient lake"], ["Landing method", "Sky crane"]],
   },
   "s3-crewed-lunar-flyby": {
-    mission: "Artemis II", name: "Artemis II", year: "2026", vehicle: "SLS Block 1 and Orion",
-    text: "The first crewed Artemis flight. Four astronauts rode an SLS rocket and an Orion capsule on a free-return path round the Moon, then splashed down in the Pacific. Orion's heat shield met the atmosphere at about 39 times the speed of sound.",
-    facts: [["Launched", "1 April 2026"], ["Splashdown", "10 April 2026"], ["Duration", "9 days, 1 hour, 32 minutes"], ["Crew", "4 astronauts"], ["Closest to the Moon", "4,067 miles (about 6,545 km)"], ["Farthest from Earth", "252,756 miles (about 406,800 km)"], ["Heat shield", "186 blocks of Avcoat, peak above 4,000 °F"]],
-    imageQuery: "Artemis II Orion splashdown",
+    name: "A crewed lunar flyby", year: "2026", vehicle: "a modern heavy-lift rocket and a crew capsule",
+    text: "The first crewed flight of a modern lunar campaign. Four astronauts rode a heavy-lift rocket and a crew capsule on a free-return path round the Moon, then splashed down in the Pacific. The capsule's heat shield met the atmosphere at about 39 times the speed of sound.",
+    facts: [["Launched", "1 April 2026"], ["Splashdown", "10 April 2026"], ["Duration", "9 days, 1 hour, 32 minutes"], ["Crew", "4 astronauts"], ["Closest to the Moon", "4,067 miles (about 6,545 km)"], ["Farthest from Earth", "252,756 miles (about 406,800 km)"], ["Heat shield", "186 ablative blocks, peak above 4,000 °F"]],
   },
   "s4-deep-space": {
-    mission: "Voyager and New Horizons", name: "Voyager 1 and New Horizons", year: "1977 and 2006", vehicle: "Titan IIIE; Atlas V 551",
-    text: "Missions to the outer Solar System take years. New Horizons left Earth faster than any other spacecraft yet and still needed 9.5 years to reach Pluto.",
-    facts: [["New Horizons launch", "19 January 2006"], ["Pluto flyby", "14 July 2015"], ["Trick", "Jupiter's gravity gave it extra speed"]],
+    name: "Grand-tour probes and a Pluto flyby", year: "1977 and 2006", vehicle: "heavy expendable rockets with upper stages",
+    text: "Missions to the outer Solar System take years. A 2006 Pluto probe left Earth faster than any other spacecraft yet and still needed 9.5 years to reach Pluto.",
+    facts: [["Pluto probe launch", "19 January 2006"], ["Pluto flyby", "14 July 2015"], ["Trick", "Jupiter's gravity gave it extra speed"]],
   },
 };
 
@@ -318,43 +300,43 @@ export interface HistoryEvent {
 }
 
 export const HISTORY: HistoryEvent[] = [
-  { month: 1, day: 4, year: 2004, text: "Spirit, the first of two Mars Exploration Rovers, landed on Mars." },
-  { month: 1, day: 19, year: 2006, text: "New Horizons launched toward Pluto." },
-  { month: 1, day: 31, year: 1958, text: "Explorer 1, the first US satellite, launched and went on to discover the Van Allen radiation belts." },
-  { month: 2, day: 18, year: 2021, text: "Perseverance landed in Jezero Crater on Mars." },
+  { month: 1, day: 4, year: 2004, text: "The first of two twin rovers landed on Mars." },
+  { month: 1, day: 19, year: 2006, text: "A probe launched toward Pluto, the fastest spacecraft ever sent from Earth at that time." },
+  { month: 1, day: 31, year: 1958, text: "The first US satellite launched and went on to discover the radiation belts around Earth." },
+  { month: 2, day: 18, year: 2021, text: "A rover with a sample-caching drill landed in Jezero Crater on Mars." },
   { month: 2, day: 20, year: 1962, text: "John Glenn became the first American to orbit Earth." },
-  { month: 3, day: 3, year: 1972, text: "Pioneer 10 launched, the first spacecraft sent to Jupiter." },
-  { month: 3, day: 5, year: 1979, text: "Voyager 1 flew past Jupiter." },
-  { month: 3, day: 10, year: 2006, text: "Mars Reconnaissance Orbiter arrived at Mars." },
+  { month: 3, day: 3, year: 1972, text: "The first spacecraft sent to Jupiter launched." },
+  { month: 3, day: 5, year: 1979, text: "A grand-tour probe flew past Jupiter." },
+  { month: 3, day: 10, year: 2006, text: "A high-resolution orbiter arrived at Mars." },
   { month: 4, day: 12, year: 1961, text: "Yuri Gagarin became the first person in space." },
-  { month: 4, day: 12, year: 1981, text: "Space Shuttle Columbia launched on the first shuttle flight." },
-  { month: 4, day: 24, year: 1990, text: "The Hubble Space Telescope was launched on the Space Shuttle." },
+  { month: 4, day: 12, year: 1981, text: "The first flight of a reusable winged orbiter launched." },
+  { month: 4, day: 24, year: 1990, text: "A large space telescope was launched from the payload bay of a reusable orbiter." },
   { month: 5, day: 5, year: 1961, text: "Alan Shepard became the first American in space." },
   { month: 6, day: 16, year: 1963, text: "Valentina Tereshkova became the first woman in space." },
-  { month: 6, day: 18, year: 2009, text: "Lunar Reconnaissance Orbiter launched to map the Moon." },
-  { month: 7, day: 4, year: 1997, text: "Mars Pathfinder landed, delivering the first rover, Sojourner, to Mars." },
-  { month: 7, day: 14, year: 2015, text: "New Horizons flew past Pluto after a 9.5-year journey." },
-  { month: 7, day: 16, year: 1969, text: "Apollo 11 launched on a Saturn V toward the Moon." },
-  { month: 7, day: 20, year: 1969, text: "Apollo 11's lunar module Eagle landed at Tranquility Base." },
-  { month: 7, day: 20, year: 1976, text: "Viking 1 became the first US spacecraft to land successfully on Mars." },
-  { month: 7, day: 30, year: 2020, text: "Mars 2020 launched, carrying the Perseverance rover." },
-  { month: 8, day: 5, year: 2011, text: "Juno launched on its way to Jupiter." },
-  { month: 8, day: 6, year: 2012, text: "Curiosity landed in Gale Crater on Mars using a sky crane." },
-  { month: 8, day: 20, year: 1977, text: "Voyager 2 launched on its grand tour of the outer planets." },
-  { month: 9, day: 5, year: 1977, text: "Voyager 1 launched. It is now the most distant human-made object." },
-  { month: 9, day: 12, year: 1992, text: "Mae Jemison launched on Space Shuttle Endeavour, the first African American woman in space." },
-  { month: 9, day: 26, year: 2022, text: "DART hit the asteroid Dimorphos, the first test of changing an asteroid's path." },
-  { month: 10, day: 4, year: 1957, text: "Sputnik 1 became the first artificial satellite and began the Space Age." },
-  { month: 10, day: 15, year: 1997, text: "Cassini launched toward Saturn." },
-  { month: 11, day: 2, year: 2000, text: "The first crew arrived at the International Space Station. People have lived in space continuously since." },
-  { month: 11, day: 12, year: 1980, text: "Voyager 1 flew past Saturn." },
-  { month: 11, day: 16, year: 2022, text: "Artemis I launched on the first flight of the Space Launch System." },
-  { month: 11, day: 20, year: 1998, text: "Zarya, the first module of the International Space Station, launched." },
-  { month: 12, day: 7, year: 1972, text: "Apollo 17 launched, the last crewed mission to the Moon so far." },
-  { month: 12, day: 11, year: 1972, text: "Apollo 17 landed in the Taurus-Littrow valley." },
-  { month: 12, day: 21, year: 1968, text: "Apollo 8 launched, the first crewed flight to orbit the Moon." },
-  { month: 12, day: 24, year: 1968, text: "Apollo 8 astronauts took the Earthrise photograph." },
-  { month: 12, day: 25, year: 2021, text: "The James Webb Space Telescope launched." },
+  { month: 6, day: 18, year: 2009, text: "A lunar mapping orbiter launched to map the Moon." },
+  { month: 7, day: 4, year: 1997, text: "A Mars lander touched down and delivered the first rover to Mars." },
+  { month: 7, day: 14, year: 2015, text: "A probe flew past Pluto after a 9.5-year journey." },
+  { month: 7, day: 16, year: 1969, text: "The first crewed lunar landing mission launched on a super-heavy rocket." },
+  { month: 7, day: 20, year: 1969, text: "A crewed lunar landing touched down for the first time, at Tranquility Base." },
+  { month: 7, day: 20, year: 1976, text: "The first US spacecraft to land successfully on Mars touched down." },
+  { month: 7, day: 30, year: 2020, text: "A Mars rover with a sample-caching drill launched." },
+  { month: 8, day: 5, year: 2011, text: "A solar-powered probe launched on its way to Jupiter." },
+  { month: 8, day: 6, year: 2012, text: "A car-sized rover landed in a Martian crater using a sky crane." },
+  { month: 8, day: 20, year: 1977, text: "A probe launched on a grand tour of the outer planets." },
+  { month: 9, day: 5, year: 1977, text: "A faster twin probe launched. It is now the most distant human-made object." },
+  { month: 9, day: 12, year: 1992, text: "Mae Jemison launched on a reusable orbiter, the first African American woman in space." },
+  { month: 9, day: 26, year: 2022, text: "A spacecraft hit a small asteroid, the first test of changing an asteroid's path." },
+  { month: 10, day: 4, year: 1957, text: "The first artificial satellite launched and began the Space Age." },
+  { month: 10, day: 15, year: 1997, text: "A large probe launched toward Saturn." },
+  { month: 11, day: 2, year: 2000, text: "The first crew arrived at an international space station. People have lived in space continuously since." },
+  { month: 11, day: 12, year: 1980, text: "A grand-tour probe flew past Saturn." },
+  { month: 11, day: 16, year: 2022, text: "An uncrewed lunar test flight launched on the first flight of a modern heavy-lift rocket." },
+  { month: 11, day: 20, year: 1998, text: "The first module of an international space station launched." },
+  { month: 12, day: 7, year: 1972, text: "The last crewed mission to the Moon so far launched." },
+  { month: 12, day: 11, year: 1972, text: "The last crewed lunar landing touched down in the Taurus-Littrow valley." },
+  { month: 12, day: 21, year: 1968, text: "The first crewed flight to orbit the Moon launched." },
+  { month: 12, day: 24, year: 1968, text: "Astronauts in lunar orbit took the Earthrise photograph." },
+  { month: 12, day: 25, year: 2021, text: "A large infrared space telescope launched." },
 ];
 
 /** The event on this date, or the next one coming up. */
@@ -410,7 +392,7 @@ export function hohmannFromEarth(targetAu: number): TransferPlan {
   return { targetAu, transferDays, leadAngleDeg: ((lead % 360) + 360) % 360, synodicDays: synodic, deltaV1Kms: Math.abs(vt1 - v1), deltaV2Kms: Math.abs(v2 - vt2) };
 }
 
-/** Real reference launch: Mars 2020 left on this date, in the middle of its window. */
+/** Real reference launch: a 2020 Mars rover left on this date, in the middle of its window. */
 export const MARS_REFERENCE_LAUNCH = Date.UTC(2020, 6, 30);
 
 export function nextMarsWindows(from: Date, count = 3): Date[] {

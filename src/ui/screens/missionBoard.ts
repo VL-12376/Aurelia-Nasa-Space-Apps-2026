@@ -5,7 +5,6 @@ import { formatUsd, trySpend } from "../../budget/budget";
 import { Flight, hashSeed, launchBlockers } from "../../missions/flight";
 import { MISSIONS, type MissionDef } from "../../missions/missions";
 import { REAL_PARALLELS } from "../../data/real";
-import { realImageFigure } from "../realImage";
 import { profileFor, type Phase } from "../../missions/profiles";
 import { capacityCheck, LAUNCHERS, OWN_ROCKET } from "../../launch/vehicles";
 import { launchGate } from "../../missions/launchGate";
@@ -179,9 +178,8 @@ export function missionBoard(): HTMLElement {
               h("h3", null, "In the real world"),
               h("strong", null, `${REAL_PARALLELS[m.id].name} (${REAL_PARALLELS[m.id].year})`),
               h("p", null, REAL_PARALLELS[m.id].text),
-              realImageFigure(REAL_PARALLELS[m.id].imageQuery ?? REAL_PARALLELS[m.id].mission),
               h("ul", { class: "list" }, ...REAL_PARALLELS[m.id].facts.map(([k, v]) => h("li", null, h("span", { class: "muted" }, k), h("span", null, v)))),
-              h("p", { class: "muted small" }, `Flew on ${REAL_PARALLELS[m.id].vehicle}. Details from public NASA records. AURELIA's version is a simplified teaching model.`),
+              h("p", { class: "muted small" }, `Flew on ${REAL_PARALLELS[m.id].vehicle}. Details from public-domain records. AURELIA's version is a simplified teaching model.`),
             )
           : null,
       ),
@@ -277,7 +275,7 @@ export function missionBoard(): HTMLElement {
       h("div", { class: "plan-opts" }, ...orbitCards),
       h("h4", null, "Launch vehicle"),
       h("div", { class: "plan-opts" }, ownCard, ...vehicleCards),
-      h("p", { class: "muted small" }, "Catalogue vehicles use published figures from launch-service guides and NASA, simplified to a few stages. Only your spacecraft section is used on a catalogue vehicle."),
+      h("p", { class: "muted small" }, "Catalogue vehicles use published figures from launch-service guides and public-domain records, simplified to a few stages. Only your spacecraft section is used on a catalogue vehicle."),
     );
   }
 

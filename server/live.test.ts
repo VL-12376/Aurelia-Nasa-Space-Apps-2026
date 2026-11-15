@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { approachesFromCad, marsFromHorizons, moonFromHorizons, parseHorizons } from "./live";
+import { approachesFromCad, marsFromEphemeris, moonFromEphemeris, parseEphemeris } from "./live";
 
-// Trimmed from real responses of NASA/JPL Horizons and the SBDB Close-Approach API.
-const HORIZONS_RESULT = `*******
+// Trimmed from real responses of the open ephemeris and close-approach services.
+const EPHEMERIS_RESULT = `*******
 $$SOE
 2461359.500000000 = A.D. 2026-Nov-15 00:00:00.0000 TDB
  X = 1.707836373659629E+05 Y =-3.665281618669272E+05 Z =-1.768800727209449E+04
@@ -21,11 +21,11 @@ const CAD_JSON = {
   data: [["2026 VV15", "2", "2461358.8", "2026-Nov-14 07:16", "0.010558206903424", "0.01053", "0.01058", "14.9763748727029", "14.9", "< 00:01", "26.029"]],
 };
 
-describe("live NASA/JPL data parsing", () => {
+describe("live space data parsing", () => {
   it("reads the Moon's state vector and turns it into distance, speed and light time", () => {
-    const s = parseHorizons(HORIZONS_RESULT)!;
+    const s = parseEphemeris(EPHEMERIS_RESULT)!;
     expect(s.pos[0]).toBeCloseTo(170783.6, 0);
-    const moon = moonFromHorizons(HORIZONS_RESULT)!;
+    const moon = moonFromEphemeris(EPHEMERIS_RESULT)!;
     // The Moon is between about 356,000 and 407,000 km away, and moves about 1 km/s.
     expect(moon.distanceKm).toBeGreaterThan(356_000);
     expect(moon.distanceKm).toBeLessThan(407_000);
@@ -36,12 +36,12 @@ describe("live NASA/JPL data parsing", () => {
   });
 
   it("returns nothing for text that is not a vector table", () => {
-    expect(parseHorizons("No ephemeris for target")).toBeNull();
-    expect(marsFromHorizons("No ephemeris for target")).toBeNull();
+    expect(parseEphemeris("No ephemeris for target")).toBeNull();
+    expect(marsFromEphemeris("No ephemeris for target")).toBeNull();
   });
 
   it("turns the Mars vector into an Earth distance and a one-way light time", () => {
-    const mars = marsFromHorizons(MARS_RESULT)!;
+    const mars = marsFromEphemeris(MARS_RESULT)!;
     // Mars is between about 54.6 and 401 million km from Earth, so radio takes about 3 to 22 minutes one way.
     expect(mars.distanceKm).toBeGreaterThan(54_000_000);
     expect(mars.distanceKm).toBeLessThan(402_000_000);

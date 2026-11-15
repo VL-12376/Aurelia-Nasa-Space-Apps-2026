@@ -303,7 +303,7 @@ const RING_FRAG = /* glsl */ `
   float h1(float x) { return fract(sin(x * 91.3458) * 47453.5453); }
   void main() {
     float r = length(vObj.xy);
-    // C ring (faint), B ring (dense), Cassini division, A ring with the Encke gap.
+    // C ring (faint), B ring (dense), the wide gap between B and A, A ring with a narrow gap.
     float dens = 0.0;
     dens += smoothstep(1.25, 1.32, r) * (1.0 - smoothstep(1.48, 1.52, r)) * 0.28;
     dens += smoothstep(1.48, 1.55, r) * (1.0 - smoothstep(1.90, 1.94, r)) * 0.95;

@@ -4,8 +4,8 @@ import type { Design, PartRef, Target } from "../spacecraft/design";
 import { PART_BY_ID, type EnginePart, type TankPart } from "../spacecraft/parts";
 
 /**
- * A catalogue of launch vehicles built from published figures (launch-service user guides and NASA
- * pages), simplified to two or three serial stages so the game's flight simulation can fly them.
+ * A catalogue of generic launch vehicles built from published figures (launch-service guides and
+ * public government documents), simplified to two or three serial stages so the game's flight simulation can fly them.
  * Stage masses, thrust and Isp are approximate; payload capacities are the published values to the
  * stated orbit class and are what the compatibility check compares against.
  */
@@ -56,50 +56,50 @@ function stage(vid: string, target: Target, n: number, s: StageSpec): LaunchVehi
 
 export const LAUNCHERS: readonly LaunchVehicle[] = [
   {
-    id: "electron", name: "Electron", operator: "Rocket Lab", firstFlight: "2017",
+    id: "lv-small", name: "Small launcher", operator: "Commercial small-launch class", firstFlight: "2017",
     blurb: "A small, low-cost launcher for light satellites. Two stages and nine small engines on the first.",
-    capacity: { leo: 300 }, capacityNote: "About 300 kg to low Earth orbit.", priceUsd: 7.5 * M, priceNote: "About $7.5 million per launch.", source: "Rocket Lab Electron payload user's guide",
+    capacity: { leo: 300 }, capacityNote: "About 300 kg to low Earth orbit.", priceUsd: 7.5 * M, priceNote: "About $7.5 million per launch.", source: "Published launch-service guides, simplified",
     stages: [
-      stage("electron", "s1", 1, { name: "Electron stage 1", dryKg: 950, engineKg: 315, engines: 9, propKg: 9_250, thrustSlKn: 224, thrustVacKn: 232, ispSl: 311, ispVac: 343, diameter: 1.2, height: 12 }),
-      stage("electron", "s2", 2, { name: "Electron stage 2", dryKg: 250, engineKg: 35, engines: 1, propKg: 2_150, thrustSlKn: 0, thrustVacKn: 25.8, ispSl: 0, ispVac: 343, diameter: 1.2, height: 4 }),
+      stage("lv-small", "s1", 1, { name: "Small launcher stage 1", dryKg: 950, engineKg: 315, engines: 9, propKg: 9_250, thrustSlKn: 224, thrustVacKn: 232, ispSl: 311, ispVac: 343, diameter: 1.2, height: 12 }),
+      stage("lv-small", "s2", 2, { name: "Small launcher stage 2", dryKg: 250, engineKg: 35, engines: 1, propKg: 2_150, thrustSlKn: 0, thrustVacKn: 25.8, ispSl: 0, ispVac: 343, diameter: 1.2, height: 4 }),
     ],
   },
   {
-    id: "falcon9", name: "Falcon 9 (expendable)", operator: "SpaceX", firstFlight: "2010",
+    id: "lv-medium", name: "Medium launcher (expendable)", operator: "Commercial medium-lift class", firstFlight: "2010",
     blurb: "A workhorse medium launcher. Flown here without recovering the first stage, which gives its full published capacity.",
-    capacity: { leo: 22_800, gto: 8_300 }, capacityNote: "About 22.8 t to low Earth orbit and 8.3 t to geostationary transfer when expended.", priceUsd: 62 * M, priceNote: "About $62 million list price.", source: "SpaceX Falcon 9 user's guide",
+    capacity: { leo: 22_800, gto: 8_300 }, capacityNote: "About 22.8 t to low Earth orbit and 8.3 t to geostationary transfer when expended.", priceUsd: 62 * M, priceNote: "About $62 million list price.", source: "Published launch-service guides, simplified",
     stages: [
-      stage("falcon9", "s1", 1, { name: "Falcon 9 stage 1", dryKg: 25_600, engineKg: 4_230, engines: 9, propKg: 395_700, thrustSlKn: 7_607, thrustVacKn: 8_227, ispSl: 282, ispVac: 311, diameter: 3.7, height: 41 }),
-      stage("falcon9", "s2", 2, { name: "Falcon 9 stage 2", dryKg: 4_000, engineKg: 500, engines: 1, propKg: 92_670, thrustSlKn: 0, thrustVacKn: 934, ispSl: 0, ispVac: 348, diameter: 3.7, height: 14 }),
+      stage("lv-medium", "s1", 1, { name: "Medium launcher stage 1", dryKg: 25_600, engineKg: 4_230, engines: 9, propKg: 395_700, thrustSlKn: 7_607, thrustVacKn: 8_227, ispSl: 282, ispVac: 311, diameter: 3.7, height: 41 }),
+      stage("lv-medium", "s2", 2, { name: "Medium launcher stage 2", dryKg: 4_000, engineKg: 500, engines: 1, propKg: 92_670, thrustSlKn: 0, thrustVacKn: 934, ispSl: 0, ispVac: 348, diameter: 3.7, height: 14 }),
     ],
   },
   {
-    id: "atlas5-401", name: "Atlas V 401", operator: "United Launch Alliance", firstFlight: "2002",
-    blurb: "A reliable NASA science launcher with a kerosene first stage and a hydrogen Centaur upper stage. It launched the Lunar Reconnaissance Orbiter and Landsat 9.",
-    capacity: { leo: 9_797, gto: 4_750, tli: 4_250 }, capacityNote: "About 9.8 t to low Earth orbit and 4.75 t to geostationary transfer. The lunar figure is inferred from the combined mass of LRO and LCROSS, which it sent to the Moon.", priceUsd: 109 * M, priceNote: "About $109 million.", source: "ULA Atlas V launch services user's guide; NASA LRO launch page",
+    id: "lv-medium-heavy", name: "Medium-heavy launcher", operator: "Government heavy-lift class", firstFlight: "2002",
+    blurb: "A reliable science-mission launcher with a kerosene first stage and a hydrogen upper stage. It suits Earth-observing satellites and lunar orbiters.",
+    capacity: { leo: 9_797, gto: 4_750, tli: 4_250 }, capacityNote: "About 9.8 t to low Earth orbit and 4.75 t to geostationary transfer. The lunar figure is inferred from the combined mass of two lunar spacecraft launched together on this class of vehicle.", priceUsd: 109 * M, priceNote: "About $109 million.", source: "Published launch-service guides, simplified",
     stages: [
-      stage("atlas5", "s1", 1, { name: "Atlas V first stage", dryKg: 20_500, engineKg: 5_480, engines: 1, propKg: 284_450, thrustSlKn: 3_827, thrustVacKn: 4_152, ispSl: 311, ispVac: 338, diameter: 3.8, height: 32 }),
-      stage("atlas5", "s2", 2, { name: "Centaur", dryKg: 2_247, engineKg: 168, engines: 1, propKg: 20_830, thrustSlKn: 0, thrustVacKn: 99.2, ispSl: 0, ispVac: 450.5, diameter: 3.05, height: 12.7 }),
+      stage("lv-medium-heavy", "s1", 1, { name: "Medium-heavy first stage", dryKg: 20_500, engineKg: 5_480, engines: 1, propKg: 284_450, thrustSlKn: 3_827, thrustVacKn: 4_152, ispSl: 311, ispVac: 338, diameter: 3.8, height: 32 }),
+      stage("lv-medium-heavy", "s2", 2, { name: "Medium-heavy upper stage", dryKg: 2_247, engineKg: 168, engines: 1, propKg: 20_830, thrustSlKn: 0, thrustVacKn: 99.2, ispSl: 0, ispVac: 450.5, diameter: 3.05, height: 12.7 }),
     ],
   },
   {
-    id: "saturn5", name: "Saturn V", operator: "NASA (Apollo, retired)", firstFlight: "1967",
-    blurb: "The rocket that sent people to the Moon. Three stages and 13 engines. Flown 13 times from 1967 to 1973 and now retired; included to compare with today's heavy launchers.",
-    capacity: { leo: 140_000, tli: 48_600 }, capacityNote: "About 140 t to low Earth orbit and 48.6 t toward the Moon.", priceUsd: 1_200 * M, priceNote: "About $1.2 billion in today's money (about $185 million in 1969).", source: "NASA Apollo program summary; Saturn V flight manual",
+    id: "lv-legacy-heavy", name: "Legacy super-heavy launcher (1960s)", operator: "Government (1960s, retired)", firstFlight: "1967",
+    blurb: "A super-heavy crewed-lunar-era rocket. Three stages and 13 engines. Flown 13 times from 1967 to 1973 and now retired; included to compare with today's heavy launchers.",
+    capacity: { leo: 140_000, tli: 48_600 }, capacityNote: "About 140 t to low Earth orbit and 48.6 t toward the Moon.", priceUsd: 1_200 * M, priceNote: "About $1.2 billion in today's money (about $185 million in 1969).", source: "Published government programme summaries, simplified",
     stages: [
-      stage("saturn5", "s1", 1, { name: "S-IC", dryKg: 135_000, engineKg: 40_000, engines: 5, propKg: 2_150_000, thrustSlKn: 34_500, thrustVacKn: 38_000, ispSl: 263, ispVac: 304, diameter: 10.1, height: 42 }),
-      stage("saturn5", "s2", 2, { name: "S-II", dryKg: 36_000, engineKg: 6_000, engines: 5, propKg: 460_000, thrustSlKn: 0, thrustVacKn: 5_100, ispSl: 0, ispVac: 421, diameter: 10.1, height: 25 }),
-      stage("saturn5", "s3", 3, { name: "S-IVB", dryKg: 13_500, engineKg: 1_600, engines: 1, propKg: 106_000, thrustSlKn: 0, thrustVacKn: 1_000, ispSl: 0, ispVac: 421, diameter: 6.6, height: 18 }),
+      stage("lv-legacy-heavy", "s1", 1, { name: "Legacy heavy stage 1", dryKg: 135_000, engineKg: 40_000, engines: 5, propKg: 2_150_000, thrustSlKn: 34_500, thrustVacKn: 38_000, ispSl: 263, ispVac: 304, diameter: 10.1, height: 42 }),
+      stage("lv-legacy-heavy", "s2", 2, { name: "Legacy heavy stage 2", dryKg: 36_000, engineKg: 6_000, engines: 5, propKg: 460_000, thrustSlKn: 0, thrustVacKn: 5_100, ispSl: 0, ispVac: 421, diameter: 10.1, height: 25 }),
+      stage("lv-legacy-heavy", "s3", 3, { name: "Legacy heavy stage 3", dryKg: 13_500, engineKg: 1_600, engines: 1, propKg: 106_000, thrustSlKn: 0, thrustVacKn: 1_000, ispSl: 0, ispVac: 421, diameter: 6.6, height: 18 }),
     ],
   },
   {
-    id: "sls1", name: "Space Launch System Block 1", operator: "NASA", firstFlight: "2022",
-    blurb: "NASA's current heavy launcher for Artemis. Two solid boosters and four RS-25 engines on the core stage, with an upper stage for the push toward the Moon. The two boosters and the core's first minutes are modelled here as one stage.",
-    capacity: { leo: 95_000, tli: 27_000 }, capacityNote: "About 95 t to low Earth orbit and 27 t toward the Moon.", priceUsd: 2_200 * M, priceNote: "About $2.2 billion per launch (NASA Office of Inspector General estimate of marginal cost).", source: "NASA SLS reference guide; NASA OIG report on Artemis costs",
+    id: "lv-super-heavy", name: "Modern super-heavy launcher", operator: "Government heavy-lift programme", firstFlight: "2022",
+    blurb: "A current government heavy launcher for crewed lunar missions. Two solid boosters and four hydrogen engines on the core stage, with an upper stage for the push toward the Moon. The two boosters and the core's first minutes are modelled here as one stage.",
+    capacity: { leo: 95_000, tli: 27_000 }, capacityNote: "About 95 t to low Earth orbit and 27 t toward the Moon.", priceUsd: 2_200 * M, priceNote: "About $2.2 billion per launch (an independent audit estimate of marginal cost).", source: "Published government launcher guides and audit reports, simplified",
     stages: [
-      stage("sls1", "s1", 1, { name: "SLS boosters and core (liftoff)", dryKg: 200_000, engineKg: 1_000, engines: 6, propKg: 1_518_000, thrustSlKn: 39_100, thrustVacKn: 42_000, ispSl: 262.6, ispVac: 299, diameter: 8.4, height: 65 }),
-      stage("sls1", "s2", 2, { name: "SLS core stage", dryKg: 85_300, engineKg: 14_000, engines: 4, propKg: 729_000, thrustSlKn: 0, thrustVacKn: 9_100, ispSl: 0, ispVac: 452, diameter: 8.4, height: 30 }),
-      stage("sls1", "s3", 3, { name: "Interim Cryogenic Propulsion Stage", dryKg: 3_500, engineKg: 301, engines: 1, propKg: 27_000, thrustSlKn: 0, thrustVacKn: 110, ispSl: 0, ispVac: 462, diameter: 5.1, height: 13.7 }),
+      stage("lv-super-heavy", "s1", 1, { name: "Super-heavy boosters and core (liftoff)", dryKg: 200_000, engineKg: 1_000, engines: 6, propKg: 1_518_000, thrustSlKn: 39_100, thrustVacKn: 42_000, ispSl: 262.6, ispVac: 299, diameter: 8.4, height: 65 }),
+      stage("lv-super-heavy", "s2", 2, { name: "Super-heavy core stage", dryKg: 85_300, engineKg: 14_000, engines: 4, propKg: 729_000, thrustSlKn: 0, thrustVacKn: 9_100, ispSl: 0, ispVac: 452, diameter: 8.4, height: 30 }),
+      stage("lv-super-heavy", "s3", 3, { name: "Super-heavy upper stage", dryKg: 3_500, engineKg: 301, engines: 1, propKg: 27_000, thrustSlKn: 0, thrustVacKn: 110, ispSl: 0, ispVac: 462, diameter: 5.1, height: 13.7 }),
     ],
   },
 ];

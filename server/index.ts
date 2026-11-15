@@ -136,7 +136,7 @@ export function startServer(port = DEFAULT_PORT, host = "0.0.0.0", options: Serv
         },
         () => {
           res.writeHead(502, { "content-type": "application/json", "access-control-allow-origin": "*" });
-          res.end(JSON.stringify({ error: "NASA/JPL data is not reachable right now." }));
+          res.end(JSON.stringify({ error: "Live space data is not reachable right now." }));
         },
       );
       return;

@@ -60,19 +60,19 @@ export const EARTH_ORBITS: OrbitOption[] = [
   {
     id: "leo", label: "Low Earth orbit, 400 km", body: "earth", altKm: 400, extraDv: 0, periodMin: period("earth", 400),
     contactFraction: 0.03, eclipseHours: 0.6, degradationPctYr: 2.5, naturalLifetimeDays: 365, stationKeepingMsYr: 30,
-    blurb: "The cheapest orbit to reach: the International Space Station flies around here. Thin air still drags a spacecraft down slowly.",
+    blurb: "The cheapest orbit to reach: crewed space stations fly around here. Thin air still drags a spacecraft down slowly.",
     coverage: "Sees a narrow strip of Earth and circles every ~92 minutes.", tradeoff: "Cheap, but short passes over a ground station and the orbit decays.",
   },
   {
     id: "sso", label: "Sun-synchronous orbit, 705 km", body: "earth", altKm: 705, extraDv: earthExtra(705), periodMin: period("earth", 705),
     contactFraction: 0.045, eclipseHours: 0.6, degradationPctYr: 3, naturalLifetimeDays: 9_000, stationKeepingMsYr: 3,
-    blurb: "A near-polar orbit that crosses each place at the same local time, so every picture has similar lighting. Earth-observing satellites such as Landsat fly here.",
+    blurb: "A near-polar orbit that crosses each place at the same local time, so every picture has similar lighting. Earth-observing satellites fly here.",
     coverage: "Covers the whole planet over days, with consistent sunlight.", tradeoff: "A bit more delta-v than LEO, but it lasts for decades.",
   },
   {
     id: "meo", label: "Medium Earth orbit, 20,200 km", body: "earth", altKm: 20_200, extraDv: earthExtra(20_200), periodMin: period("earth", 20_200),
     contactFraction: 0.25, eclipseHours: 1.0, degradationPctYr: 5, naturalLifetimeDays: 1_000_000, stationKeepingMsYr: 10,
-    blurb: "Navigation satellites such as GPS fly here, 12 hours per orbit. The path crosses the Van Allen radiation belts, which age electronics and solar panels faster.",
+    blurb: "Navigation satellites fly here, 12 hours per orbit. The path crosses the Van Allen radiation belts, which age electronics and solar panels faster.",
     coverage: "Each satellite sees about a third of the globe at a time.", tradeoff: "Long ground contact, but a hard radiation environment.",
   },
   {

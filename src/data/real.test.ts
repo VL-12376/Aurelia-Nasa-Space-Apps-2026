@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { APOLLO11_ASCENT, DELTA_V_MAP, REAL_PARALLELS, REAL_VEHICLES, dynamicPressureKpa, historyFor, hohmannFromEarth, nextMarsWindows, stackDeltaV } from "./real";
+import { CREWED_LUNAR_ASCENT, DELTA_V_MAP, REAL_PARALLELS, REAL_VEHICLES, dynamicPressureKpa, historyFor, hohmannFromEarth, nextMarsWindows, stackDeltaV } from "./real";
 import { MISSIONS } from "../missions/missions";
 
 describe("real reference data", () => {
@@ -24,8 +24,8 @@ describe("real reference data", () => {
     expect(v.synodicDays / 30.44).toBeLessThan(20);
   });
 
-  it("the Saturn V rocket-equation estimate lands near the LEO plus trans-lunar budget", () => {
-    const sv = REAL_VEHICLES.find((v) => v.id === "saturn-v")!;
+  it("the super-heavy rocket's rocket-equation estimate lands near the LEO plus trans-lunar budget", () => {
+    const sv = REAL_VEHICLES.find((v) => v.id === "super-heavy-1960s")!;
     const { perStage, total } = stackDeltaV(sv.stages!, sv.payloadT!);
     expect(perStage).toHaveLength(3);
     const budget = DELTA_V_MAP.find((l) => l.id === "launch")!.kms + DELTA_V_MAP.find((l) => l.id === "tli")!.kms;
@@ -33,7 +33,7 @@ describe("real reference data", () => {
   });
 
   it("the real stage masses add up to the quoted liftoff mass", () => {
-    const sv = REAL_VEHICLES.find((v) => v.id === "saturn-v")!;
+    const sv = REAL_VEHICLES.find((v) => v.id === "super-heavy-1960s")!;
     const sum = sv.stages!.reduce((n, s) => n + s.propellantT + s.dryT, 0) + sv.payloadT!;
     expect(Math.abs(sum - sv.liftoffMassT) / sv.liftoffMassT).toBeLessThan(0.04);
   });
@@ -41,7 +41,7 @@ describe("real reference data", () => {
   it("peak dynamic pressure on a launch comes at low altitude, not at sea level or in space", () => {
     expect(dynamicPressureKpa(0, 0)).toBe(0);
     expect(dynamicPressureKpa(11, 450)).toBeGreaterThan(dynamicPressureKpa(0.1, 20));
-    // At 11 km and 450 m/s the formula gives about 37 kPa, close to Apollo 11's reported peak of about 35 kPa.
+    // At 11 km and 450 m/s the formula gives about 37 kPa, close to the reported peak of about 35 kPa on the first crewed lunar landing launch.
     expect(dynamicPressureKpa(11, 450)).toBeGreaterThan(30);
     expect(dynamicPressureKpa(11, 450)).toBeLessThan(42);
     expect(dynamicPressureKpa(80, 4000)).toBeLessThan(dynamicPressureKpa(11, 450) * 0.05);
@@ -51,8 +51,8 @@ describe("real reference data", () => {
     for (const m of MISSIONS) expect(REAL_PARALLELS[m.id], m.id).toBeDefined();
   });
 
-  it("the Apollo 11 ascent events are in time order", () => {
-    for (let i = 1; i < APOLLO11_ASCENT.length; i++) expect(APOLLO11_ASCENT[i].t).toBeGreaterThanOrEqual(APOLLO11_ASCENT[i - 1].t);
+  it("the crewed lunar ascent events are in time order", () => {
+    for (let i = 1; i < CREWED_LUNAR_ASCENT.length; i++) expect(CREWED_LUNAR_ASCENT[i].t).toBeGreaterThanOrEqual(CREWED_LUNAR_ASCENT[i - 1].t);
   });
 
   it("finds today's date in history, or the next event", () => {

@@ -4,7 +4,7 @@ import { router } from "../../core/router";
 import { store, type Settings } from "../../core/store";
 import { audio } from "../../audio/engine";
 import { speak, stopSpeaking } from "../../audio/voice";
-import { DISCLAIMER, SOURCES } from "../../data/real";
+import { DISCLAIMER } from "../../data/real";
 
 function slider(id: string, label: string, value: number, onInput: (v: number) => void): HTMLElement {
   const input = h("input", { type: "range", id, min: 0, max: 100, step: 1, value: Math.round(value * 100), "aria-label": label, oninput: (e: Event) => onInput(Number((e.target as HTMLInputElement).value) / 100) });
@@ -101,8 +101,11 @@ export function settingsScreen(): HTMLElement {
         { class: "panel" },
         h("h3", { style: { margin: "0 0 8px" } }, "Data and credits"),
         h("p", { class: "muted small" }, DISCLAIMER),
-        h("ul", { class: "muted small", style: { paddingLeft: "18px", margin: "8px 0" } }, ...SOURCES.map((s) => h("li", null, h("a", { href: s.url, target: "_blank", rel: "noopener noreferrer" }, s.name), ` · ${s.use}`))),
-        h("p", { class: "muted small" }, "Music and sound effects are synthesised in your browser. Crew voices come from your device's own speech engine. Portraits and artwork are original to AURELIA."),
+        h(
+          "ul",
+          { class: "muted small", style: { paddingLeft: "18px", margin: "8px 0" } },
+          ...["Space data: open government space-science data (public domain)", "Research figures: published research measurements", "Music and sound effects: synthesised in your browser", "Crew voices: your device's own speech engine", "Portraits and artwork: original to AURELIA"].map((t) => h("li", null, t)),
+        ),
       ),
     ),
   );

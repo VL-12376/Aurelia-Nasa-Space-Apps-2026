@@ -5,12 +5,11 @@ import { analyse } from "../../spacecraft/design";
 import { BODY_INFO, type BodyId } from "../../science/bodies";
 import { audio } from "../../audio/engine";
 import {
-  APOLLO11_ASCENT, ARTEMIS_CAMPAIGN, DELTA_V_MAP, DISCLAIMER, MARS_REFERENCE_LAUNCH, MATURITY, ORION, REAL_MISSIONS, REAL_VEHICLES, SOURCES,
+  CREWED_LUNAR_ASCENT, LUNAR_CAMPAIGN, DELTA_V_MAP, DISCLAIMER, MARS_REFERENCE_LAUNCH, MATURITY, CREW_CAPSULE, REAL_MISSIONS, REAL_VEHICLES, SOURCES,
   dynamicPressureKpa, hohmannFromEarth, nextMarsWindows, stackDeltaV,
 } from "../../data/real";
 import { CAREER_LIMIT_MSV, DOSE_PRESETS, RADIATION_ENVS, daysToLimit, totalDose, type DaysByEnv, type RadiationEnv } from "../../data/radiation";
 import { gameShell } from "../layout";
-import { realImageFigure } from "../realImage";
 
 /* ------------------------------------------------------------------ */
 /* Lesson plumbing                                                     */
@@ -75,14 +74,14 @@ function lessonDestination(): HTMLElement {
         fact("Surface gravity", `${b.gravity.toFixed(2)} m/s² (${(b.gravity / 9.80665).toFixed(2)} g)`),
         fact("Escape speed", `${b.escapeKms} km/s`),
         fact("Distance", b.distanceNote),
-        fact("Direct trip (simplest path)", plan ? `${Math.round(plan.transferDays)} days (${(plan.transferDays / 365.25).toFixed(1)} years)` : "About 3 days (Apollo 11)"),
+        fact("Direct trip (simplest path)", plan ? `${Math.round(plan.transferDays)} days (${(plan.transferDays / 365.25).toFixed(1)} years)` : "About 3 days (first crewed landing)"),
       ),
       callout("Why the destination matters", pick === "moon" ? "The Moon is close, so a trip takes days, but it has no atmosphere: landing needs rocket power all the way down." : `Gravity here is ${(b.gravity / 9.80665).toFixed(2)} g, so landing and leaving cost ${b.gravity < 9.80665 ? "less" : "more"} speed change than on Earth. The long trip means a long wait for radio replies and a spacecraft that must work by itself.`),
-      h("p", { class: "muted small" }, "Measurements: NASA NSSDCA planetary fact sheets. Trip times: simple circular-orbit transfer, the standard first estimate."),
+      h("p", { class: "muted small" }, "Measurements: open planetary fact sheets. Trip times: simple circular-orbit transfer, the standard first estimate."),
     );
   };
   draw();
-  return h("div", null, h("p", null, "Every mission starts on a napkin with one question: what do we want to learn, and where must we go to learn it? NASA's Webb \"Build It Yourself\" game teaches the same lesson: the science goal drives every engineering choice that follows. Pick a destination and see what it asks of a mission."), chips, out);
+  return h("div", null, h("p", null, "Every mission starts on a napkin with one question: what do we want to learn, and where must we go to learn it? Real mission teams work the same way: the science goal drives every engineering choice that follows. Pick a destination and see what it asks of a mission."), chips, out);
 }
 
 function fact(k: string, v: string): HTMLElement {
@@ -112,11 +111,11 @@ function lessonDeltaV(): HTMLElement {
         h("label", { class: `ac-leg${on.has(l.id) ? " on" : ""}`, title: l.note }, h("input", { type: "checkbox", checked: on.has(l.id), onchange: (e: Event) => { if ((e.target as HTMLInputElement).checked) on.add(l.id); else on.delete(l.id); draw(); } }), h("span", null, l.label), h("span", { class: "mono" }, `${l.kms.toFixed(1)} km/s`)),
       ),
     );
-    const cap = [{ label: "Typical single-stage limit", v: 9.0 }, { label: "Saturn V alone (ideal)", v: stackDeltaV(REAL_VEHICLES[0].stages!, REAL_VEHICLES[0].payloadT!).total }];
+    const cap = [{ label: "Typical single-stage limit", v: 9.0 }, { label: "A 1960s super-heavy rocket alone (ideal)", v: stackDeltaV(REAL_VEHICLES[0].stages!, REAL_VEHICLES[0].payloadT!).total }];
     out.replaceChildren(
       h("div", { class: "ac-total" }, h("span", null, "Total delta-v for this plan"), h("strong", { class: "mono" }, `${total.toFixed(1)} km/s`)),
       meter([{ label: "Your plan", value: total, tone: total > cap[1].v ? "bad" : "" }, { label: cap[0].label, value: cap[0].v }, { label: cap[1].label, value: cap[1].v }], 14),
-      h("p", { class: "muted small" }, total > cap[1].v ? "More than a Saturn V delivers on its own (about 12 km/s, enough for orbit plus the trip to the Moon). Real missions add engines on the spacecraft itself for the later burns: Apollo's own service module engine made the lunar-orbit capture and the trip home." : total > cap[0].v ? "Too much for one stage: this is why rockets have stages." : "Within reach of a single well-built rocket."),
+      h("p", { class: "muted small" }, total > cap[1].v ? "More than a 1960s super-heavy rocket delivers on its own (about 12 km/s, enough for orbit plus the trip to the Moon). Real missions add engines on the spacecraft itself for the later burns: the crewed lunar spacecraft's own service engine made the lunar-orbit capture and the trip home." : total > cap[0].v ? "Too much for one stage: this is why rockets have stages." : "Within reach of a single well-built rocket."),
     );
   };
   draw();
@@ -127,7 +126,7 @@ function lessonDeltaV(): HTMLElement {
     h("div", { class: "ac-chips" }, ...ROUTES.map((r) => h("button", { class: "chip", onclick: () => { on.clear(); r.legs.forEach((id) => on.add(id)); draw(); } }, r.label))),
     list,
     out,
-    h("p", { class: "muted small" }, "Values are commonly used mission-design figures, rounded. Real missions vary with the exact orbit. Tools like NASA's open-source GMAT compute them precisely."),
+    h("p", { class: "muted small" }, "Values are commonly used mission-design figures, rounded. Real missions vary with the exact orbit. Trajectory-design software computes them precisely."),
   );
 }
 
@@ -156,7 +155,7 @@ function lessonRocketEquation(): HTMLElement {
     const sv = REAL_VEHICLES[0];
     const calc = stackDeltaV(sv.stages!, sv.payloadT!);
     real.replaceChildren(
-      h("h4", null, "The real thing: Saturn V"),
+      h("h4", null, "The real thing: a 1960s super-heavy rocket"),
       h("table", { class: "ac-table" },
         h("tr", null, h("th", null, "Stage"), h("th", null, "Engines"), h("th", null, "Propellant"), h("th", null, "Empty"), h("th", null, "Isp"), h("th", null, "Δv")),
         ...sv.stages!.map((s, i) => h("tr", null, h("td", null, s.name), h("td", null, s.engines), h("td", { class: "mono" }, `${s.propellantT} t`), h("td", { class: "mono" }, `${s.dryT} t`), h("td", { class: "mono" }, `${s.isp} s`), h("td", { class: "mono" }, `${calc.perStage[i].toFixed(1)} km/s`))),
@@ -164,7 +163,7 @@ function lessonRocketEquation(): HTMLElement {
       ),
       h("p", null, `Ideal Δv of ${calc.total.toFixed(1)} km/s is close to the 12.5 km/s needed for orbit (9.4) plus the trip to the Moon (3.1). The rocket equation is how engineers knew three stages were enough, years before the first flight.`),
       stats ? h("p", { class: "ac-yours" }, `Your own design in the Hangar: ${stats.deltaV ? (stats.deltaV / 1000).toFixed(2) : "0.00"} km/s.`) : h("p", { class: "muted small" }, "Build a design in the Hangar and its delta-v will appear here for comparison."),
-      h("p", { class: "muted small" }, "Stage masses and specific impulse are rounded values from NASA Saturn V documentation. The estimate ignores gravity and drag losses, so it is an upper limit."),
+      h("p", { class: "muted small" }, "Stage masses and specific impulse are rounded values from published vehicle documentation. The estimate ignores gravity and drag losses, so it is an upper limit."),
     );
   };
   draw();
@@ -296,8 +295,8 @@ function lessonTransfer(): HTMLElement {
         fact("Burn to match the target", `${plan.deltaV2Kms.toFixed(1)} km/s`),
       ),
       callout("Why you cannot launch whenever you like", `The spacecraft coasts along the dashed path for ${Math.round(plan.transferDays)} days. ${BODY_INFO[pick].name} keeps moving the whole time, so the spacecraft must leave when the planet is at the right angle ahead of Earth. Miss it and the next chance is about ${(plan.synodicDays / 30.44).toFixed(0)} months away.`),
-      pick === "mars" ? h("p", { class: "ac-yours" }, `Real example: Mars 2020 launched on ${new Date(MARS_REFERENCE_LAUNCH).toUTCString().slice(5, 16)}. By this repeating pattern, upcoming Mars windows open around ${mars.map((d) => d.toLocaleDateString("en-GB", { month: "short", year: "numeric" })).join(", ")}.`) : null,
-      h("p", { class: "muted small" }, "A circular, flat-orbit (Hohmann) transfer: the standard first estimate. Real trajectories, designed with tools like NASA's open-source GMAT, are refined with the real, slightly tilted and elliptical orbits."),
+      pick === "mars" ? h("p", { class: "ac-yours" }, `Real example: a 2020 Mars rover launched on ${new Date(MARS_REFERENCE_LAUNCH).toUTCString().slice(5, 16)}. By this repeating pattern, upcoming Mars windows open around ${mars.map((d) => d.toLocaleDateString("en-GB", { month: "short", year: "numeric" })).join(", ")}.`) : null,
+      h("p", { class: "muted small" }, "A circular, flat-orbit (Hohmann) transfer: the standard first estimate. Real trajectories, designed with specialist software, are refined with the real, slightly tilted and elliptical orbits."),
     );
   };
 
@@ -320,21 +319,21 @@ function lessonLaunch(): HTMLElement {
   const events = h("ol", { class: "ac-events" });
   const qOut = h("div", { class: "ac-out" });
   const drawEvents = () => {
-    const current = [...APOLLO11_ASCENT].filter((e) => e.t <= t).pop();
+    const current = [...CREWED_LUNAR_ASCENT].filter((e) => e.t <= t).pop();
     events.replaceChildren(
-      ...APOLLO11_ASCENT.map((e) => h("li", { class: e === current ? "now" : e.t <= t ? "past" : "" }, h("span", { class: "mono" }, e.t < 0 ? `T${e.t}s` : `T+${Math.floor(e.t / 60)}:${String(e.t % 60).padStart(2, "0")}`), h("div", null, h("strong", null, e.label), e === current ? h("p", null, e.explain) : null))),
+      ...CREWED_LUNAR_ASCENT.map((e) => h("li", { class: e === current ? "now" : e.t <= t ? "past" : "" }, h("span", { class: "mono" }, e.t < 0 ? `T${e.t}s` : `T+${Math.floor(e.t / 60)}:${String(e.t % 60).padStart(2, "0")}`), h("div", null, h("strong", null, e.label), e === current ? h("p", null, e.explain) : null))),
     );
   };
   const drawQ = () => {
     const q = dynamicPressureKpa(alt, speed);
-    qOut.replaceChildren(h("div", { class: "ac-total" }, h("span", null, "Dynamic pressure q = ½ρv²"), h("strong", { class: "mono" }, `${q.toFixed(1)} kPa`)), h("div", { class: "bar", role: "progressbar", "aria-valuenow": Math.round(q), "aria-valuemin": 0, "aria-valuemax": 40, "aria-label": "Dynamic pressure" }, h("span", { class: q > 30 ? "warn" : "", style: { width: `${Math.min(100, (q / 40) * 100)}%` } })), h("p", { class: "muted small" }, q > 25 ? "Near the peak. Apollo 11 felt about 35 kPa at roughly 12 km up." : q < 2 ? "Almost no pressure: either too slow, or the air is too thin." : "Building up or fading."));
+    qOut.replaceChildren(h("div", { class: "ac-total" }, h("span", null, "Dynamic pressure q = ½ρv²"), h("strong", { class: "mono" }, `${q.toFixed(1)} kPa`)), h("div", { class: "bar", role: "progressbar", "aria-valuenow": Math.round(q), "aria-valuemin": 0, "aria-valuemax": 40, "aria-label": "Dynamic pressure" }, h("span", { class: q > 30 ? "warn" : "", style: { width: `${Math.min(100, (q / 40) * 100)}%` } })), h("p", { class: "muted small" }, q > 25 ? "Near the peak. The first crewed lunar launch felt about 35 kPa at roughly 12 km up." : q < 2 ? "Almost no pressure: either too slow, or the air is too thin." : "Building up or fading."));
   };
   drawEvents();
   drawQ();
   return h(
     "div",
     null,
-    h("p", null, "Here is a real launch, event by event: Apollo 11's Saturn V on 16 July 1969. Drag the time slider and read what each moment means. Times are approximate, from the Apollo 11 mission report and Flight Journal."),
+    h("p", null, "Here is a real launch, event by event: the 1960s super-heavy rocket that sent the first crewed lunar landing mission on its way on 16 July 1969. Drag the time slider and read what each moment means. Times are approximate, from the published mission report and flight log."),
     slider("Time since liftoff", -9, 700, 1, 0, (n) => (n < 0 ? `T${n} s` : `T+${Math.floor(n / 60)}:${String(Math.round(n) % 60).padStart(2, "0")}`), (n) => { t = n; drawEvents(); }),
     events,
     h("h4", null, "Why \"Max Q\" is the dangerous moment"),
@@ -365,16 +364,16 @@ function lessonMaturity(): HTMLElement {
   return h(
     "div",
     null,
-    h("p", null, "Real missions do not jump from idea to launch. NASA's Jet Propulsion Laboratory defined Concept Maturity Levels to describe the steps. At Goddard Space Flight Center, a Mission Design Lab team of specialists (orbits, power, communications, propulsion, structures) works through them together, which is why AURELIA gives you a crew with different jobs."),
+    h("p", null, "Real missions do not jump from idea to launch. Concept Maturity Levels describe the steps. At a large space agency, a mission design lab team of specialists (orbits, power, communications, propulsion, structures) works through them together, which is why AURELIA gives you a crew with different jobs."),
     h("ol", { class: "ac-ladder" },
       ...MATURITY.map((m) =>
         h("li", { class: m.level === here ? "here" : m.level < here ? "past" : "" },
-          h("div", { class: "ac-level mono" }, `CML ${m.level}`),
+          h("div", { class: "ac-level mono" }, `Level ${m.level}`),
           h("div", null, h("strong", null, m.name), m.level === here ? h("span", { class: "tag" }, "You are here") : null, h("p", { class: "muted small" }, `Real teams: ${m.real}`), h("p", { class: "small" }, `In AURELIA: ${m.game}`), m.where !== "academy" ? h("button", { class: "btn ghost small", onclick: go[m.where] }, m.where === "hangar" ? "Open Hangar" : "Open Missions") : null),
         ),
       ),
     ),
-    h("p", { class: "muted small" }, "Levels 1 to 6 follow Wessen et al., JPL, AIAA 2013. Levels 7 to 9 are the formal development reviews that come after, which AURELIA does not model."),
+    h("p", { class: "muted small" }, "Levels 1 to 6 follow the published concept maturity scale (Wessen et al., 2013). Levels 7 to 9 are the formal development reviews that come after, which AURELIA does not model."),
   );
 }
 
@@ -393,34 +392,32 @@ function lessonMissions(): HTMLElement {
           h("div", { class: "mono small muted" }, `${m.year} · ${m.vehicle}`),
           h("h4", null, m.name),
           h("p", { class: "small" }, m.destination),
-          realImageFigure(m.imageQuery ?? m.name),
           h("div", { class: "ac-facts" }, ...m.facts.map(([k, v]) => fact(k, v))),
           callout("What to notice", m.notice),
         ),
       ),
     ),
-    h("h4", null, "The Artemis campaign"),
-    h("p", null, "Artemis is NASA's programme to return people to the Moon. Each flight adds one new thing to test, so the risky parts are met one at a time. This is how it stands in NASA's own pages as of November 2026."),
+    h("h4", null, "A crewed lunar campaign of the 2020s"),
+    h("p", null, "Several space agencies are working to return people to the Moon. Each flight adds one new thing to test, so the risky parts are met one at a time. This is how the campaign stands in public records as of November 2026."),
     h("div", { class: "ac-cards" },
-      ...ARTEMIS_CAMPAIGN.map((a) =>
+      ...LUNAR_CAMPAIGN.map((a) =>
         h("article", { class: "ac-card" }, h("div", { class: "mono small muted" }, a.when), h("h4", null, a.name), h("p", { class: "small" }, a.what)),
       ),
     ),
-    h("h4", null, "Orion, the crew spacecraft"),
+    h("h4", null, "The crew capsule"),
     h("div", { class: "ac-facts" },
-      fact("Crew", `${ORION.crew}, for up to ${ORION.maxDays} days`),
-      fact("Gross liftoff mass", `${ORION.grossLiftoffMassKg.toLocaleString("en-US")} kg`),
-      fact("Mass sent toward the Moon", `${ORION.tliMassKg.toLocaleString("en-US")} kg`),
-      fact("Height with abort tower", `${ORION.stackHeightM} m`),
+      fact("Crew", `${CREW_CAPSULE.crew}, for up to ${CREW_CAPSULE.maxDays} days`),
+      fact("Gross liftoff mass", `${CREW_CAPSULE.grossLiftoffMassKg.toLocaleString("en-US")} kg`),
+      fact("Mass sent toward the Moon", `${CREW_CAPSULE.tliMassKg.toLocaleString("en-US")} kg`),
+      fact("Height with abort tower", `${CREW_CAPSULE.stackHeightM} m`),
     ),
-    h("p", { class: "muted small" }, ORION.note),
+    h("p", { class: "muted small" }, CREW_CAPSULE.note),
     h("h4", null, "Real launch vehicles"),
     h("table", { class: "ac-table" },
       h("tr", null, h("th", null, "Vehicle"), h("th", null, "Height"), h("th", null, "Liftoff mass"), h("th", null, "Liftoff thrust"), h("th", null, "To low orbit")),
       ...REAL_VEHICLES.map((v) => h("tr", { title: v.blurb }, h("td", null, v.name), h("td", { class: "mono" }, `${v.heightM} m`), h("td", { class: "mono" }, `${v.liftoffMassT.toLocaleString("en-US")} t`), h("td", { class: "mono" }, `${v.liftoffThrustMN} MN`), h("td", { class: "mono" }, `${v.leoT} t`))),
     ),
-    h("p", { class: "muted small" }, "Rounded values from NASA vehicle fact sheets. Hover a row for a description."),
-    h("p", { class: "muted small" }, "Pictures come live from the NASA Image and Video Library, each linked to its page there, and show only when you are online. Want to turn a real spacecraft around in 3D? NASA's ", h("a", { href: "https://science.nasa.gov/3d-resources/", target: "_blank", rel: "noopener noreferrer" }, "3D Resources"), " page has models; AURELIA does not include them because each one has its own terms."),
+    h("p", { class: "muted small" }, "Rounded values from public vehicle fact sheets. Hover a row for a description."),
     h("p", { class: "muted small" }, DISCLAIMER),
   );
 }
@@ -429,7 +426,7 @@ function lessonMissions(): HTMLElement {
 /* Lesson 8: keeping a crew alive                                      */
 /* ------------------------------------------------------------------ */
 
-const DOSE_MAX: Record<RadiationEnv["id"], number> = { leo: 400, orion: 30, moon: 180, marsCruise: 400, marsSurface: 600 };
+const DOSE_MAX: Record<RadiationEnv["id"], number> = { leo: 400, capsule: 30, moon: 180, marsCruise: 400, marsSurface: 600 };
 
 function lessonCrewHealth(): HTMLElement {
   const days: DaysByEnv = { leo: 182 };
@@ -440,8 +437,8 @@ function lessonCrewHealth(): HTMLElement {
     const pct = Math.round(r.limitShare * 100);
     out.replaceChildren(
       h("div", { class: "ac-total" }, h("span", null, "Total dose for this plan"), h("strong", { class: "mono" }, `${r.totalMSv.toFixed(r.totalMSv < 100 ? 1 : 0)} mSv`)),
-      h("div", { class: "bar", role: "progressbar", "aria-valuenow": Math.min(100, pct), "aria-valuemin": 0, "aria-valuemax": 100, "aria-label": "Share of NASA's career dose limit" }, h("span", { class: r.limitShare >= 1 ? "warn" : "", style: { width: `${Math.min(100, r.limitShare * 100)}%` } })),
-      h("p", { class: r.limitShare >= 1 ? "warn" : "" }, `${pct}% of NASA's ${CAREER_LIMIT_MSV} mSv career limit. ${r.limitShare === 0 ? "Move a slider to plan some days." : r.limitShare < 0.1 ? "A small share: one flight like this leaves plenty of career left." : r.limitShare < 0.5 ? "A big slice of a career in a single flight." : r.limitShare < 1 ? "Most of a career's allowance in one trip." : "More than a whole career's allowance in a single trip. This is the problem NASA's radiation researchers are working on for Mars: shorter trips, more shielding, and better storm shelters."}`),
+      h("div", { class: "bar", role: "progressbar", "aria-valuenow": Math.min(100, pct), "aria-valuemin": 0, "aria-valuemax": 100,       "aria-label": "Share of the career dose limit" }, h("span", { class: r.limitShare >= 1 ? "warn" : "", style: { width: `${Math.min(100, r.limitShare * 100)}%` } })),
+            h("p", { class: r.limitShare >= 1 ? "warn" : "" }, `${pct}% of the ${CAREER_LIMIT_MSV} mSv career limit commonly applied to astronauts. ${r.limitShare === 0 ? "Move a slider to plan some days." : r.limitShare < 0.1 ? "A small share: one flight like this leaves plenty of career left." : r.limitShare < 0.5 ? "A big slice of a career in a single flight." : r.limitShare < 1 ? "Most of a career's allowance in one trip." : "More than a whole career's allowance in a single trip. This is the problem radiation researchers are working on for Mars: shorter trips, more shielding, and better storm shelters."}`),
     );
   };
   const drawSliders = () => {
@@ -453,7 +450,7 @@ function lessonCrewHealth(): HTMLElement {
   return h(
     "div",
     null,
-    h("p", null, "Keeping astronauts healthy is a design requirement, just like delta-v. NASA's Human Research Program names five hazards of human spaceflight: space radiation, isolation and confinement, distance from Earth, gravity (or the lack of it) and closed, hostile environments. This lesson takes two of them: radiation, which you can calculate, and fatigue, which is a way of thinking about how crews work."),
+    h("p", null, "Keeping astronauts healthy is a design requirement, just like delta-v. Spaceflight health research names five hazards of human spaceflight: space radiation, isolation and confinement, distance from Earth, gravity (or the lack of it) and closed, hostile environments. This lesson takes two of them: radiation, which you can calculate, and fatigue, which is a way of thinking about how crews work."),
     h("h4", null, "Radiation: a dose budget"),
     h("p", null, "Radiation dose is counted in millisieverts (mSv). Outside Earth's magnetic field, cosmic rays pass through a spacecraft all day, every day, so dose grows with days in space. Plan a trip by choosing days in each place, or start from a preset. The rates are real measurements."),
     h("div", { class: "ac-chips" }, ...DOSE_PRESETS.map((p) => h("button", { class: "chip", title: p.note, onclick: () => preset(p) }, p.label))),
@@ -463,13 +460,13 @@ function lessonCrewHealth(): HTMLElement {
       h("tr", null, h("th", null, "Where"), h("th", null, "Measured dose rate"), h("th", null, "Days alone to reach the limit"), h("th", null, "Measured by")),
       ...RADIATION_ENVS.map((e) => h("tr", { title: e.note }, h("td", null, e.label), h("td", { class: "mono" }, `${e.mSvPerDay.toFixed(2)} mSv/day${e.range ? ` (${e.range[0]}–${e.range[1]})` : ""}`), h("td", { class: "mono" }, Math.round(daysToLimit(e)).toLocaleString("en-US")), h("td", { class: "small" }, e.where))),
     ),
-    callout("A simplification", "This is a plain sum of days times a measured average rate. It leaves out solar storms, the solar cycle, how much shielding a vehicle has, and the astronaut's earlier flights. NASA's limit is for effective dose, calculated with a standard body model; the measured dose-equivalent rates used here stand in for it, so treat results as a teaching estimate, not a mission plan."),
-    callout("Where the limit comes from", "NASA's standard says an astronaut's career dose from spaceflight radiation must stay below 600 mSv, the same for every age and sex. It is set so the added risk of dying from radiation-caused cancer stays at or under about 3%. NASA also follows the ALARA principle: keep every dose As Low As Reasonably Achievable."),
-    callout("Storms are a different problem", "A big solar particle event delivers a lot of dose quickly. Orion is built so that, inside its storm shelter, the dose from a large event stays at or below 150 mSv, and the radiation measured on Artemis I supported that shielding design. The Headquarters 'Space weather' card shows how active the Sun has been in the last 30 days."),
+    callout("A simplification", "This is a plain sum of days times a measured average rate. It leaves out solar storms, the solar cycle, how much shielding a vehicle has, and the astronaut's earlier flights.     The limit applies to effective dose, calculated with a standard body model; the measured dose-equivalent rates used here stand in for it, so treat results as a teaching estimate, not a mission plan."),
+        callout("Where the limit comes from", "Space-agency radiation standards say an astronaut's career dose from spaceflight radiation must stay below 600 mSv, the same for every age and sex. It is set so the added risk of dying from radiation-caused cancer stays at or under about 3%. Agencies also follow the ALARA principle: keep every dose As Low As Reasonably Achievable."),
+        callout("Storms are a different problem", "A big solar particle event delivers a lot of dose quickly. A modern crew capsule is built so that, inside its storm shelter, the dose from a large event stays at or below 150 mSv, and the radiation measured on an uncrewed lunar test flight supported that shielding design. The Headquarters 'Space weather' card shows how active the Sun has been in the last 30 days."),
     h("h4", null, "Fatigue and workload"),
-    h("p", null, "Radiation harms slowly; tired crews make mistakes quickly. NASA's Human Research Program lists four things that set how alert a person is: how long they slept last night, how many hours they have been awake, how groggy they are just after waking, and the time of day for their body clock. Spoil any one and performance drops. NASA's evidence reports say astronauts consistently sleep less in space than on the ground, and that too much work leads to long shifts, which cause lost sleep and a body clock out of step, which in turn cause lapses in attention."),
+    h("p", null, "Radiation harms slowly; tired crews make mistakes quickly. Spaceflight health research lists four things that set how alert a person is: how long they slept last night, how many hours they have been awake, how groggy they are just after waking, and the time of day for their body clock. Spoil any one and performance drops. Published evidence reports say astronauts consistently sleep less in space than on the ground, and that too much work leads to long shifts, which cause lost sleep and a body clock out of step, which in turn cause lapses in attention."),
     h("p", null, "For mission design this means workload is a resource to budget, like propellant: a plan with no rest, or with every task stacked into the same busy hours, spends the crew's alertness. AURELIA does not model crew fatigue or workload; it is here as a concept, and as a reason flight controllers build timelines with rest and margin."),
-    h("p", { class: "muted small" }, "Sources: NASA Human Research Program (nasa.gov/hrp) and its hazards and evidence reports; dose rates and storm-shelter figure from George et al., Nature 2024 (NASA Space Radiation Analysis Group, DLR, ESA); Mars cruise note from NASA/JPL's 2013 Curiosity release; career limit from NASA-STD-3001."),
+    h("p", { class: "muted small" }, "Sources: published spaceflight health research and its hazards and evidence reports; dose rates and storm-shelter figure from published research measurements (George et al., Nature 2024); the Mars cruise note from a 2013 published rover-instrument result; the career limit from published radiation-protection guidance."),
     h("p", { class: "muted small" }, DISCLAIMER),
   );
 }
@@ -480,7 +477,7 @@ function lessonCrewHealth(): HTMLElement {
 
 export const LESSONS: Lesson[] = [
   { id: "destination", cml: 1, title: "Where are we going?", blurb: "Start with the science question", build: lessonDestination,
-    quiz: { q: "What is the very first question a mission team asks?", options: ["Which rocket is the biggest?", "What do we want to learn, and where do we need to go to learn it?", "How much will the paint cost?"], answer: 1, why: "The science goal drives everything else: destination, instruments, spacecraft size and rocket. NASA's Webb \"Build It Yourself\" game teaches exactly this." } },
+    quiz: { q: "What is the very first question a mission team asks?", options: ["Which rocket is the biggest?", "What do we want to learn, and where do we need to go to learn it?", "How much will the paint cost?"], answer: 1, why: "The science goal drives everything else: destination, instruments, spacecraft size and rocket. Real mission teams design every spacecraft this way." } },
   { id: "deltav", cml: 2, title: "The delta-v price list", blurb: "Every manoeuvre has a price", build: lessonDeltaV,
     quiz: { q: "Landing on the Moon from lunar orbit (about 1.7 km/s) and climbing back up (about 1.9 km/s) costs roughly how much delta-v in total?", options: ["0.4 km/s", "3.6 km/s", "12 km/s"], answer: 1, why: "1.7 + 1.9 = 3.6 km/s. With no atmosphere to help, the Moon is a rocket-powered landing in both directions." } },
   { id: "rocket-equation", cml: 2, title: "The rocket equation", blurb: "Why rockets are mostly fuel", build: lessonRocketEquation,
@@ -488,13 +485,13 @@ export const LESSONS: Lesson[] = [
   { id: "transfers", cml: 2, title: "Orbits and launch windows", blurb: "Why you cannot launch whenever you like", build: lessonTransfer,
     quiz: { q: "Why do Mars missions launch only about every 26 months?", options: ["Earth and Mars must be at the right angle for the cheapest transfer, and that repeats every 26 months", "Mars is hidden behind the Sun the rest of the time", "Rockets are only built every two years"], answer: 0, why: "The spacecraft coasts for about 7 to 9 months while Mars keeps moving, so it must leave when Mars is about 44° ahead. That alignment repeats every synodic period." } },
   { id: "launch", cml: 6, title: "Launch day", blurb: "A real launch, moment by moment", build: lessonLaunch,
-    quiz: { q: "Why is \"Max Q\" a critical moment in a launch?", options: ["The rocket runs out of fuel", "Speed and air density combine to put the greatest aerodynamic load on the rocket", "The crew sleeps"], answer: 1, why: "Dynamic pressure is ½ρv². Early on the air is thick but the rocket is slow. Later it is fast but the air is thin. The product peaks once, about a minute and a half in for Apollo." } },
+    quiz: { q: "Why is \"Max Q\" a critical moment in a launch?", options: ["The rocket runs out of fuel", "Speed and air density combine to put the greatest aerodynamic load on the rocket", "The crew sleeps"], answer: 1, why: "Dynamic pressure is ½ρv². Early on the air is thick but the rocket is slow. Later it is fast but the air is thin. The product peaks once, about a minute and a half in for a 1960s super-heavy rocket." } },
   { id: "maturity", cml: 4, title: "How real missions mature", blurb: "From napkin to launch pad", build: lessonMaturity,
     quiz: { q: "In real mission design, what comes right before a complete point design?", options: ["Launch", "Trade space: comparing many options to see which choices matter", "Splashdown"], answer: 1, why: "Teams explore the trade space (bigger tank versus more engines, one stage versus two) before locking in one design. Jumping straight to a design risks missing a better one." } },
-  { id: "missions", cml: 6, title: "Real missions", blurb: "What actually happened", build: lessonMissions,
-    quiz: { q: "Why did Voyager 1 visit Jupiter and Saturn on the way out of the Solar System?", options: ["It was lost", "Gravity assists: flying past a planet can add speed without using propellant", "To take photographs only"], answer: 1, why: "A spacecraft that passes a moving planet can steal a little of the planet's orbital energy. Voyager used Jupiter and Saturn as slingshots." } },
+  { id: "missions", cml: 6,   title: "Real-world missions", blurb: "What actually happened", build: lessonMissions,
+      quiz: { q: "Why did a 1970s probe visit Jupiter and Saturn on the way out of the Solar System?", options: ["It was lost", "Gravity assists: flying past a planet can add speed without using propellant", "To take photographs only"], answer: 1, why: "A spacecraft that passes a moving planet can steal a little of the planet's orbital energy. That probe used Jupiter and Saturn as slingshots." } },
   { id: "crew-health", cml: 5, title: "Keeping a crew alive: radiation and fatigue", blurb: "Radiation doses and tired crews", build: lessonCrewHealth,
-    quiz: { q: "Why is a round trip to Mars so much harder on radiation than six months on the International Space Station?", options: ["Mars is much colder", "Away from Earth's magnetic field the dose rate is more than double (about 1.6 against 0.7 mSv a day), and the trip lasts far longer", "Spacecraft to Mars carry no shielding at all"], answer: 1, why: "The measured rates are about 0.68 mSv a day on the station and about 1.58 mSv a day in deep space, and a Mars mission adds months of travel on top. That is why NASA's career limit of 600 mSv is a design driver for Mars." } },
+    quiz: { q: "Why is a round trip to Mars so much harder on radiation than six months on a space station?", options: ["Mars is much colder", "Away from Earth's magnetic field the dose rate is more than double (about 1.6 against 0.7 mSv a day), and the trip lasts far longer", "Spacecraft to Mars carry no shielding at all"], answer: 1, why: "The measured rates are about 0.68 mSv a day on the station and about 1.58 mSv a day in deep space, and a Mars mission adds months of travel on top. That is why the 600 mSv career limit is a design driver for Mars." } },
 ];
 
 export function academyScreen(): HTMLElement {
@@ -510,7 +507,7 @@ export function academyScreen(): HTMLElement {
       h("h3", null, "Mission Academy"),
       h("p", { class: "muted small" }, "Learn how real missions are planned, one step at a time. Each lesson ends with a question; answer right for 5 research points."),
       ...LESSONS.map((l, i) =>
-        h("button", { class: `ac-item${l.id === current.id ? " active" : ""}${isDone(l.id) ? " done" : ""}`, onclick: () => { current = l; audio.sfx("click"); render(); } }, h("span", { class: "ac-num mono" }, isDone(l.id) ? "✓" : String(i + 1)), h("span", null, h("strong", null, l.title), h("small", null, `CML ${l.cml} · ${l.blurb}`))),
+        h("button", { class: `ac-item${l.id === current.id ? " active" : ""}${isDone(l.id) ? " done" : ""}`, onclick: () => { current = l; audio.sfx("click"); render(); } }, h("span", { class: "ac-num mono" }, isDone(l.id) ? "✓" : String(i + 1)), h("span", null, h("strong", null, l.title), h("small", null, `Level ${l.cml} · ${l.blurb}`))),
       ),
     );
     const quizBox = h("div", { class: "ac-quiz" });
@@ -551,7 +548,7 @@ export function academyScreen(): HTMLElement {
       h("div", { class: "ac-head" }, h("span", { class: "tag" }, `Concept maturity level ${current.cml}`), h("h2", null, current.title)),
       current.build(),
       quizBox,
-      h("details", { class: "ac-sources" }, h("summary", null, "Sources and credits"), h("ul", null, ...SOURCES.map((s) => h("li", null, h("a", { href: s.url, target: "_blank", rel: "noopener noreferrer" }, s.name), ` (${s.use})`))), h("p", { class: "muted small" }, DISCLAIMER)),
+      h("details", { class: "ac-sources" }, h("summary", null, "Sources and credits"), h("ul", null, ...SOURCES.map((s) => h("li", null, `${s.name} (${s.use})`))), h("p", { class: "muted small" }, DISCLAIMER)),
     );
     main.scrollTop = 0;
   };

@@ -20,7 +20,7 @@ npm run build      # typecheck and production build
 
 - **Single-player**: choose a crew role (Aerospace, Propulsion, Mission Controller, Science and Systems). The other three are AI crew who fit their own parts on request and make their own decisions during flights. Or play all four roles yourself.
 - **Multiplayer**: up to four people create or join a room with a 4-letter code and claim a role each. Unclaimed roles are played by AI. See [docs/multiplayer-architecture.md](docs/multiplayer-architecture.md).
-- **Sound**: all music and effects are generated live in the browser (Web Audio), so there are no audio files and no licensing issues. Volume and mute are in Settings, and the speaker button bottom-left.
+- **Sound**: all music and effects are generated live in the browser (Web Audio), so there are no audio files and no licensing issues. It starts by itself where the browser allows it, and otherwise on your first click. Volume, mute and crew voices are in Settings, and the speaker button bottom-left.
 
 ## Publishing
 
@@ -71,6 +71,16 @@ docs/          architecture notes
 | 9 | Multiplayer (up to four players) | Done |
 | 10 | Cinematics, sound, testing, optimisation | In progress |
 
-## Demo data
+## Real data and learning
 
-The headquarters has a **Demo data** switch (off by default). When on, a few panels (active missions, research in progress, agency activity) show invented sample content in dashed, labelled panels so you can preview the dashboard. That sample data lives only in `src/demo/` and is never written to the save. Funds, budget, reputation, season and research points always come from the saved game.
+AURELIA uses real, public NASA and JPL data and has no invented demo data.
+
+- **Live** (Headquarters): the Moon's current distance and speed from JPL Horizons, and the next asteroid close approaches from JPL's Close-Approach Data API. NASA's JPL services don't allow direct calls from a web page, so the game server fetches them and caches the result for 30 minutes at `GET /api/space`.
+- **Reference** (`src/data/real.ts`): Saturn V, Space Shuttle and SLS stage data, the Apollo 11 ascent, a real mission matching each game mission, the JPL Concept Maturity Levels, Hohmann transfers and Mars launch windows.
+- **Mission Academy**: seven short lessons (destination, delta-v, rocket equation, orbits and launch windows, launch day, how missions mature, real missions), each ending in a quiz.
+- **Guidance**: a next-step banner, a hangar build coach that names the next part, highlights it and can fit it for you (and nudges if you stall), and a spoken launch poll and countdown with explained flight call-outs.
+- The flight physics and part stats are simplified teaching models, and the game says so.
+
+Contains data from NASA and JPL public sources. AURELIA is an independent game and is not affiliated with or endorsed by NASA. The full source list is in Settings and the Academy.
+
+Crew voices use your device's built-in speech synthesis (no recordings); music and effects are synthesised in the browser.

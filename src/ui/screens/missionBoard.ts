@@ -4,6 +4,7 @@ import { store } from "../../core/store";
 import { formatUsd, trySpend } from "../../budget/budget";
 import { Flight, hashSeed, launchBlockers, preflight } from "../../missions/flight";
 import { MISSIONS, type MissionDef } from "../../missions/missions";
+import { REAL_PARALLELS } from "../../data/real";
 import { profileFor, type Phase } from "../../missions/profiles";
 import { PlanetPortrait } from "../../scene/planetPortrait";
 import type { BodyId } from "../../science/bodies";
@@ -161,6 +162,17 @@ export function missionBoard(): HTMLElement {
         { class: "grid cols-2" },
         h("div", { class: "panel hud" }, h("h3", null, "Scientific purpose"), h("p", null, m.sciencePurpose), h("h3", { style: { margin: "14px 0 8px" } }, "Objectives"), h("ul", { class: "list" }, ...m.objectives.map((o) => h("li", null, h("span", null, o))))),
         h("div", { class: "panel hud" }, h("h3", null, "Known risks"), h("ul", { class: "risks" }, ...risksFor(phases).map((r) => h("li", null, h("strong", null, r.title), h("p", { class: "muted small" }, r.body))))),
+        REAL_PARALLELS[m.id]
+          ? h(
+              "div",
+              { class: "panel hud real-parallel" },
+              h("h3", null, "In the real world"),
+              h("strong", null, `${REAL_PARALLELS[m.id].name} (${REAL_PARALLELS[m.id].year})`),
+              h("p", null, REAL_PARALLELS[m.id].text),
+              h("ul", { class: "list" }, ...REAL_PARALLELS[m.id].facts.map(([k, v]) => h("li", null, h("span", { class: "muted" }, k), h("span", null, v)))),
+              h("p", { class: "muted small" }, `Flew on ${REAL_PARALLELS[m.id].vehicle}. Details from public NASA records. AURELIA's version is a simplified teaching model.`),
+            )
+          : null,
       ),
       h(
         "div",

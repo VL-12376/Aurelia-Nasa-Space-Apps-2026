@@ -3,6 +3,7 @@ import type { Telemetry } from "../missions/flight";
 import { R_EARTH, R_MARS, R_MOON } from "../missions/kinematics";
 import type { Design, Target } from "../spacecraft/design";
 import { HangarScene } from "./hangar";
+import { LaunchSite, Puffs } from "./launchSite";
 import { createBodyMesh, createGlow } from "./planetMaterial";
 
 const M_TO_KM = 0.001;
@@ -49,10 +50,16 @@ export class MissionScene {
   private lastTel: Telemetry | null = null;
   private plumeK = 0;
   private reduced: boolean;
+  private site: LaunchSite | null = null;
+  private trail = new Puffs(700, M_TO_KM, 0xe4dfee, 0.5);
+  private prevPos: THREE.Vector3 | null = null;
+  private fov = 42;
+  private readonly skyDay = new THREE.Color(0x4d82c8);
+  private readonly skySpace = new THREE.Color(0x02030a);
 
   constructor(private container: HTMLElement, private design: Design, reducedMotion: boolean) {
     this.reduced = reducedMotion;
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance", preserveDrawingBuffer: import.meta.env.DEV });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.1;
@@ -100,6 +107,7 @@ export class MissionScene {
     key.position.set(1, 0.25, 0.5);
     this.scene.add(key);
     this.scene.add(this.vehicle);
+    this.scene.add(this.trail.points);
     this.vehicle.add(this.plume);
     this.buildPlume();
 
@@ -200,6 +208,11 @@ export class MissionScene {
     const pos = new THREE.Vector3(k.pos[0], k.pos[1], 0);
     const rHat = pos.clone().normalize();
     if (rHat.lengthSq() < 0.5) rHat.set(1, 0, 0);
+    const onAscent = tel.view === "ascent" && k.frame === "Earth";
+    // At liftoff the vehicle's base, not its middle, rests on the pad; the offset fades as it climbs.
+    if (onAscent) pos.addScaledVector(rHat, (this.height / 2) * M_TO_KM * (1 - smooth(0, 4, k.altKm)));
+    const delta = this.prevPos ? pos.clone().sub(this.prevPos) : new THREE.Vector3();
+    this.prevPos = pos.clone();
     const tHat = new THREE.Vector3(-rHat.y, rHat.x, 0);
     const nHat = new THREE.Vector3(0, 0, 1);
 
@@ -266,24 +279,79 @@ export class MissionScene {
     }
     this.vehicle.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), nose.normalize());
 
-    // Engine plume
+    // Engine plume: in thin air it spreads wide and pale, as the exhaust expands into the vacuum.
     const target = tel.burning ? 1 : 0;
     this.plumeK += (target - this.plumeK) * 0.12;
     const len = (6 + 22 * Math.min(1, tel.thrustKn / 600)) * this.plumeK;
     const flick = 0.9 + Math.random() * 0.2;
+    const spread = 1 + 2.6 * smooth(8, 75, k.altKm);
     this.plumeCones.forEach((c, i) => {
       const l = Math.max(len * (i === 0 ? 1 : 0.55) * flick, 0.001);
-      c.scale.set(1, l, 1);
+      c.scale.set(spread, l, spread);
       c.position.y = -l / 2;
-      (c.material as THREE.MeshBasicMaterial).opacity = this.plumeK * (i === 0 ? 0.32 : 0.5);
+      (c.material as THREE.MeshBasicMaterial).opacity = this.plumeK * (i === 0 ? 0.32 : 0.5) * (1 - 0.35 * smooth(8, 75, k.altKm));
     });
+
+    // Exhaust trail: laid along the path through the atmosphere, then left behind as the world moves past.
+    const inAir = onAscent && k.altKm < 90;
+    const drawPx = this.renderer.getDrawingBufferSize(new THREE.Vector2()).y;
+    if (inAir && this.plumeK > 0.3) {
+      const n = Math.min(14, Math.floor(delta.length() / 0.012) + 1);
+      for (let j = 0; j < n; j++) {
+        const f = (j + Math.random()) / n;
+        const e = nose.clone().multiplyScalar(-(this.height / 2) * M_TO_KM * 1.05).addScaledVector(delta, -(1 - f));
+        const r = () => (Math.random() - 0.5) * 0.004;
+        this.trail.emit(e.x, e.y, e.z, r() - nose.x * 0.01, r() - nose.y * 0.01, r() + (Math.random() - 0.5) * 0.004, 7 + Math.random() * 10);
+      }
+    }
+    this.trail.setOpacity(0.5 * (1 - smooth(40, 90, k.altKm)));
+    this.trail.step(1 / 60, 0.17, 0.99, onAscent ? delta : undefined);
+
+    // Sky: blue daylight near the ground thins to black by about 100 km, and the stars come out.
+    const sky = onAscent ? 1 - smooth(12, 110, k.altKm) : 0;
+    (this.scene.background as THREE.Color).copy(this.skySpace).lerp(this.skyDay, sky);
+    (this.stars.material as THREE.PointsMaterial).opacity = 0.9 * (1 - sky * 0.97);
 
     // Camera: a slow orbit around the vehicle, lifted so the horizon is visible.
     if (!this.reduced) this.az += 0.0022;
     const d = Math.max(this.height * 2.7, 30) * M_TO_KM;
     const base = tHat.clone().multiplyScalar(-Math.cos(this.az)).addScaledVector(nHat, Math.sin(this.az) * 0.9).addScaledVector(rHat, 0.28);
     if (tel.view === "moon-transfer" || tel.view === "helio") base.addScaledVector(rHat, 0.15);
-    this.camera.position.copy(base.normalize().multiplyScalar(d));
+    const chase = base.normalize().multiplyScalar(d);
+    let fovTarget = 42;
+
+    // Launch complex: a ground camera watches liftoff from beside the pad, then hands over to the chase camera.
+    const padDir = new THREE.Vector3(1, 0, 0);
+    if (onAscent && k.altKm < 14) {
+      if (!this.site) {
+        this.site = new LaunchSite(this.height);
+        this.scene.add(this.site.group);
+      }
+      const padPos = padDir.clone().multiplyScalar(R_EARTH).sub(pos);
+      this.site.group.visible = true;
+      this.site.group.position.copy(padPos);
+      this.site.group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), padDir);
+      this.site.setView(drawPx, this.fov);
+      this.site.update(k.altKm, this.plumeK, 1 / 60, this.t);
+
+      const standoff = Math.min(Math.max(this.height * 3.2, 140), 420) * M_TO_KM;
+      const ground = padPos.clone().addScaledVector(nHat, standoff).addScaledVector(padDir, 0.014);
+      const w = 1 - smooth(1.2, 5, k.altKm);
+      this.camera.position.copy(chase).lerp(ground, w);
+      const shake = (tel.burning ? this.plumeK : 0) * w * (this.reduced ? 0 : 0.00012) * (1 - smooth(0.04, 0.7, k.altKm));
+      this.camera.position.add(new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(shake));
+      // Zoom in as the rocket recedes so it stays a good size in frame.
+      fovTarget = THREE.MathUtils.clamp(THREE.MathUtils.radToDeg(2 * Math.atan((this.height * 3.4 * M_TO_KM) / Math.max(this.camera.position.length(), 1e-6))), 5, 42);
+    } else {
+      if (this.site) this.site.group.visible = false;
+      this.camera.position.copy(chase);
+    }
+    this.fov += (fovTarget - this.fov) * 0.12;
+    if (Math.abs(this.camera.fov - this.fov) > 0.01) {
+      this.camera.fov = this.fov;
+      this.camera.updateProjectionMatrix();
+    }
+    this.trail.setView(drawPx, this.fov);
     this.camera.up.copy(k.frame === "Sun" ? nHat : rHat);
     this.camera.lookAt(0, 0, 0);
     this.stars.position.copy(this.camera.position);
@@ -316,6 +384,8 @@ export class MissionScene {
   dispose(): void {
     cancelAnimationFrame(this.raf);
     this.observer.disconnect();
+    this.site?.dispose();
+    this.trail.dispose();
     this.scene.traverse((o) => {
       const m = o as THREE.Mesh;
       m.geometry?.dispose();

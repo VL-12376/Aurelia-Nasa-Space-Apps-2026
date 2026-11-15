@@ -11,6 +11,8 @@ export interface Settings {
   musicVolume: number;
   sfxVolume: number;
   muted: boolean;
+  /** Crew members speak their lines aloud with the browser's built-in voices. */
+  voice: boolean;
   playerName: string;
   serverUrl: string;
 }
@@ -29,6 +31,7 @@ const defaultSettings = (): Settings => ({
   musicVolume: 0.5,
   sfxVolume: 0.7,
   muted: false,
+  voice: true,
   playerName: "",
   serverUrl: "",
 });

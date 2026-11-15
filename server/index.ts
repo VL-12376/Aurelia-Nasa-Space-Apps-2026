@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
 import { DEFAULT_PORT, type ClientMsg, type ServerMsg } from "../src/net/protocol";
 import { Room } from "./room";
+import { spaceNow } from "./live";
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ";
 const TICK_MS = 50;
@@ -42,6 +43,19 @@ export function startServer(port = DEFAULT_PORT, host = "0.0.0.0"): Promise<Runn
     if (req.url === "/health") {
       res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*" });
       res.end(JSON.stringify({ ok: true, rooms: rooms.size, players: conns.size }));
+      return;
+    }
+    if (req.url === "/api/space" && req.method === "GET") {
+      spaceNow().then(
+        (data) => {
+          res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*", "cache-control": "public, max-age=300" });
+          res.end(JSON.stringify(data));
+        },
+        () => {
+          res.writeHead(502, { "content-type": "application/json", "access-control-allow-origin": "*" });
+          res.end(JSON.stringify({ error: "NASA/JPL data is not reachable right now." }));
+        },
+      );
       return;
     }
     res.writeHead(200, { "content-type": "text/plain" });

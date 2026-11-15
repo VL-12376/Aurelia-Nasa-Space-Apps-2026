@@ -12,6 +12,8 @@ import {
 import { CATEGORIES, PART_BY_ID, partsInCategory, type Part, type PartCategory } from "../../spacecraft/parts";
 import { CATEGORY_LORE, GLOSSARY, PART_NOTES, derived } from "../../spacecraft/explain";
 import { advise, unstagedDeltaV, workedExample } from "../../spacecraft/advisor";
+import { nextBuildStep, type CoachStep } from "../../spacecraft/coach";
+import { speak } from "../../audio/voice";
 import { TEMPLATES } from "../../spacecraft/templates";
 import { gameShell } from "../layout";
 import { session } from "../session";
@@ -225,7 +227,7 @@ export function hangarScreen(): HTMLElement {
           { class: "h-part-wrap" },
           h(
             "button",
-            { class: `h-part${unlocked ? "" : " locked"}${mine ? "" : " foreign"}`, "aria-disabled": unlocked && mine ? null : "true", title: !unlocked ? `Locked: research ${techName(p.tech)}` : mine ? p.blurb : ownerLine(p), onclick: () => add(p.id) },
+            { class: `h-part${unlocked ? "" : " locked"}${mine ? "" : " foreign"}${coach?.partId === p.id ? " coach-hl" : ""}`, "aria-disabled": unlocked && mine ? null : "true", title: !unlocked ? `Locked: research ${techName(p.tech)}` : mine ? p.blurb : ownerLine(p), onclick: () => add(p.id) },
             h("div", { class: "hp-head" }, icon(meta.icon, 18), h("strong", null, p.name), unlocked ? null : h("span", { class: "hp-lock" }, "🔒")),
             h("div", { class: "hp-stat mono" }, keyStat(p)),
             h("div", { class: "hp-foot mono" }, h("span", null, fmtMass(p.mass)), h("span", { class: afford ? "" : "bad" }, formatUsd(p.cost))),
@@ -247,7 +249,8 @@ export function hangarScreen(): HTMLElement {
   const fleet = h("div", { class: "h-panel" });
   const advisor = h("div", { class: "h-panel" });
   const learn = h("div", { class: "h-panel" });
-  const right = h("div", { class: "h-right" }, hud, crewPanel, advisor, stages, systems, budget, mission, learn, fleet);
+  const coachPanel = h("div", { class: "h-panel coach", role: "region", "aria-label": "Build coach" });
+  const right = h("div", { class: "h-right" }, hud, coachPanel, crewPanel, advisor, stages, systems, budget, mission, learn, fleet);
 
   function bigStat(label: string, value: string, tone = "", term?: string): HTMLElement {
     const g = term ? GLOSSARY[term] : null;
@@ -452,6 +455,82 @@ export function hangarScreen(): HTMLElement {
     );
   }
 
+  /* ----- build coach: always names the next step, and nudges when the player seems stuck ----- */
+  let coach: CoachStep | null = null;
+  let lastActivity = Date.now();
+  let nudgedFor = "";
+  let showWhy = false;
+  const STUCK_MS = 22_000;
+
+  function coachMission() {
+    return missionsForSeason(game().season).find((x) => x.id === missionId) ?? null;
+  }
+
+  function showStep(): void {
+    if (!coach?.partId) return;
+    category = coach.category;
+    if (coach.target !== "craft") target = coach.target;
+    preview = null;
+    renderPalette();
+    renderStages();
+    renderCoach();
+    paletteGrid.querySelector(".coach-hl")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+
+  function doStep(): void {
+    if (!coach?.partId) return;
+    const p = PART_BY_ID[coach.partId];
+    category = coach.category;
+    if (coach.target !== "craft") target = coach.target;
+    if (!owns(p)) {
+      askCrew([roleForPart(p)]);
+      return;
+    }
+    add(coach.partId);
+  }
+
+  function renderCoach(): void {
+    const m = coachMission();
+    coach = nextBuildStep(design, stats, m, game().researchedTech);
+    const c = coach;
+    const stuck = !c.done && Date.now() - lastActivity > STUCK_MS;
+    coachPanel.classList.toggle("nudge", stuck);
+    const p = c.partId ? PART_BY_ID[c.partId] : null;
+    const mine = p ? owns(p) : true;
+    const noPart = !c.done && !c.partId;
+    fill(
+      coachPanel,
+      h("div", { class: "coach-tag mono" }, c.done ? "BUILD COACH · READY" : stuck ? "BUILD COACH · NEED A HAND?" : "BUILD COACH · NEXT STEP"),
+      h("strong", { class: "coach-title" }, c.title),
+      p ? h("div", { class: "coach-part muted small" }, `Try: ${p.name} · ${TARGET_LABEL[c.target]}`) : null,
+      noPart ? h("p", { class: "small" }, "The right part is locked or will not fit. Open Research to unlock it, choose a bigger bus, or remove something to make room.") : null,
+      showWhy || stuck || c.done ? h("p", { class: "small coach-why" }, c.why) : null,
+      h(
+        "div",
+        { class: "coach-actions" },
+        c.done
+          ? h("button", { class: "btn small", onclick: () => build() }, "Build spacecraft")
+          : h(
+              "div",
+              { class: "coach-row" },
+              p ? h("button", { class: "btn small ghost", onclick: showStep }, "Show me") : null,
+              p ? h("button", { class: "btn small", onclick: doStep }, mine ? "Do it for me" : `Ask ${ROLE_BY_ID[roleForPart(p)].name.split(" ").slice(-1)[0]}`) : null,
+              h("button", { class: "btn small ghost", "aria-expanded": String(showWhy), onclick: () => { showWhy = !showWhy; renderCoach(); } }, showWhy ? "Hide why" : "Why?"),
+            ),
+      ),
+    );
+  }
+
+  const coachTimer = window.setInterval(() => {
+    if (!coach || coach.done || Date.now() - lastActivity < STUCK_MS) return;
+    const key = `${coach.id}:${design.parts.length}`;
+    if (nudgedFor === key) return;
+    nudgedFor = key;
+    renderCoach();
+    speak(coach.category === "structure" ? "aerospace" : coach.category === "tank" || coach.category === "engine" ? "propulsion" : coach.category === "systems" ? "controller" : "science", `Stuck? ${coach.title}.`);
+  }, 4000);
+  router.onLeave(() => clearInterval(coachTimer));
+
   function renderAdvisor(): void {
     const g = game();
     const m = missionsForSeason(g.season).find((x) => x.id === missionId) ?? null;
@@ -575,6 +654,8 @@ export function hangarScreen(): HTMLElement {
   }
 
   function renderAll(): void {
+    lastActivity = Date.now();
+    renderCoach();
     renderPalette();
     renderHud();
     renderCrew();

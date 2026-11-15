@@ -4,6 +4,7 @@ import { router, type ScreenId } from "../core/router";
 import { store } from "../core/store";
 import { ROLE_BY_ID } from "../crew/roles";
 import { mp } from "../net/session";
+import { guideBanner } from "./guide";
 
 const NAV: { id: ScreenId; label: string }[] = [
   { id: "hq", label: "Headquarters" },
@@ -11,11 +12,12 @@ const NAV: { id: ScreenId; label: string }[] = [
   { id: "briefing", label: "Missions" },
   { id: "hangar", label: "Hangar" },
   { id: "research", label: "Research" },
+  { id: "academy", label: "Academy" },
   { id: "profile", label: "Profile" },
 ];
 
 /** In a shared room the campaign lives on the server, so only the screens that read it are offered. */
-const MP_NAV: ScreenId[] = ["map", "briefing", "hangar"];
+const MP_NAV: ScreenId[] = ["map", "briefing", "hangar", "academy"];
 
 /** Wraps a screen's content with the in-game top bar and navigation. */
 export function gameShell(active: ScreenId, content: HTMLElement, opts: { fill?: boolean } = {}): HTMLElement {
@@ -59,6 +61,7 @@ export function gameShell(active: ScreenId, content: HTMLElement, opts: { fill?:
         clock,
         h("button", { class: "btn ghost small", onclick: () => { if (mp.active) mp.leave(); router.navigate("menu"); } }, shared ? "Leave" : "Menu"),
       ),
+      shared || active === "academy" ? null : guideBanner(store.get().game, active),
       content,
     ),
   );

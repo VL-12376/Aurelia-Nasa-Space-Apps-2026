@@ -2,7 +2,6 @@ import type { Flight } from "../missions/flight";
 
 /** UI-only state. Never saved: it resets when the page reloads. */
 export const session = {
-  showDemo: true,
   /** Season picked on the mode screen, carried to the role-select step. */
   pendingSeason: 1,
   selectedMissionId: null as string | null,

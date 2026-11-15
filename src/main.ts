@@ -9,6 +9,7 @@ import "./styles/mission.css";
 import "./styles/crew.css";
 import "./styles/hq.css";
 import "./styles/fx.css";
+import "./styles/learn.css";
 
 import { router } from "./core/router";
 import { startNetFlow } from "./net/flow";
@@ -24,6 +25,7 @@ import { settingsScreen } from "./ui/screens/settings";
 import { headquarters } from "./ui/screens/headquarters";
 import { researchScreen } from "./ui/screens/research";
 import { profileScreen } from "./ui/screens/profile";
+import { academyScreen } from "./ui/screens/academy";
 import { missionBoard } from "./ui/screens/missionBoard";
 import { missionControl } from "./ui/screens/missionControl";
 import { debriefScreen } from "./ui/screens/debrief";
@@ -50,6 +52,7 @@ router.register("settings", settingsScreen);
 router.register("hq", headquarters);
 router.register("research", researchScreen);
 router.register("profile", profileScreen);
+router.register("academy", academyScreen);
 
 router.register("map", solarMapScreen);
 router.register("hangar", hangarScreen);

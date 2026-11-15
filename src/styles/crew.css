@@ -466,3 +466,25 @@ code {
   border-color: var(--lavender);
   box-shadow: var(--glow);
 }
+.audio-prompt {
+  position: fixed;
+  left: 62px;
+  bottom: 18px;
+  z-index: 60;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--lavender);
+  background: rgba(10, 9, 26, 0.9);
+  color: var(--white);
+  font: 500 0.78rem var(--font-ui);
+  cursor: pointer;
+  animation: audio-prompt-pulse 1.8s ease-in-out infinite;
+}
+.audio-prompt[hidden] {
+  display: none;
+}
+@keyframes audio-prompt-pulse {
+  50% {
+    box-shadow: 0 0 18px rgba(184, 166, 232, 0.55);
+  }
+}

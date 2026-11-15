@@ -5,7 +5,7 @@ import { BUDGET_CATEGORIES, formatUsd } from "../../budget/budget";
 import { SEASONS } from "../../campaign/seasons";
 import { reputationTier, seasonProgress } from "../../campaign/reputation";
 import { ROLES } from "../../crew/roles";
-import { DEMO_ACTIVE_MISSIONS, DEMO_ACTIVE_RESEARCH, DEMO_ACTIVITY } from "../../demo/demoData";
+import { REAL_PARALLELS } from "../../data/real";
 import { MISSIONS, missionsForSeason } from "../../missions/missions";
 import { TECHS } from "../../research/tech";
 import { createEarthMoonWidget } from "../../scene/earthMoon";
@@ -13,6 +13,7 @@ import { gameShell } from "../layout";
 import { session } from "../session";
 import { avatar } from "../crew";
 import { countUp } from "../fx";
+import { historyCard, liveSpaceCard } from "../liveCard";
 
 const FACTS = [
   "LOW EARTH ORBIT SPEED ≈ 7.8 km/s",
@@ -52,10 +53,6 @@ const DONUT_COLORS = ["#b8a6e8", "#7563b5", "#d8d9e0", "#8f9de8", "#a07fd6", "#6
 function bar(pct: number, label: string, tone = ""): HTMLElement {
   const p = Math.max(0, Math.min(100, pct));
   return h("div", { class: `bar ${tone}`, role: "progressbar", "aria-valuenow": Math.round(p), "aria-valuemin": 0, "aria-valuemax": 100, "aria-label": label }, h("span", { style: { width: `${p}%` } }));
-}
-
-function demoBadge(): HTMLElement {
-  return h("span", { class: "demo-badge", title: "Sample data. Not part of your saved game." }, "Demo data");
 }
 
 function svgText(y: string, cls: string, text: string): SVGElement {
@@ -118,7 +115,7 @@ export function headquarters(): HTMLElement {
   const last = game.lastFlight;
   const lastMission = last ? MISSIONS.find((m) => m.id === last.missionId) : undefined;
 
-  // The globe is built once so toggling demo data does not restart the WebGL scene.
+  // The globe is built once so re-rendering the panels does not restart the WebGL scene.
   const globeHost = h("div", { class: "hq3-globe" });
   const widget = createEarthMoonWidget(globeHost);
   router.onLeave(() => widget.dispose());
@@ -146,17 +143,12 @@ export function headquarters(): HTMLElement {
   };
 
   const render = () => {
-    const demo = session.showDemo;
-    const activeMissions = demo ? DEMO_ACTIVE_MISSIONS : game.activeMissions;
-    const research = demo ? DEMO_ACTIVE_RESEARCH : game.activeResearch;
-    const researchTech = research ? TECHS.find((t) => t.id === research.techId) : undefined;
-    widget.setCraft(Math.max(1, activeMissions.length + game.fleet.length));
+    widget.setCraft(Math.max(1, Math.min(8, game.fleet.length + game.flights)));
 
     headline.replaceChildren(
       h("h2", null, `${game.agencyName} Headquarters`),
       h("p", { class: "muted" }, `Season ${season.id}: ${season.name} · Agency year ${game.year}`),
       h("div", { class: "hq3-status mono" }, h("span", { class: "led" }), h("span", null, "SYSTEMS NOMINAL"), clock),
-      h("button", { class: "btn ghost small", "aria-pressed": String(demo), title: "Preview the dashboard with invented sample data. Your saved game is not changed.", onclick: () => { session.showDemo = !session.showDemo; render(); } }, `Demo data: ${demo ? "on" : "off"}`),
     );
 
     const int = (n: number) => String(Math.round(n));
@@ -167,24 +159,24 @@ export function headquarters(): HTMLElement {
       chip("Spacecraft ready", game.fleet.length, int, `${game.flights} flown`),
     );
 
-    /* ----- left: mission status ----- */
-    const missionRows = activeMissions.map((m) => {
-      const def = MISSIONS.find((d) => d.id === m.missionId);
-      return h(
-        "li",
-        null,
-        h("button", { class: "row-btn", onclick: () => { session.selectedMissionId = m.missionId; router.navigate("briefing"); } }, h("div", { class: "mr-top" }, h("span", null, def?.name ?? m.missionId), h("span", { class: m.status === "nominal" ? "tag" : "tag warn" }, m.status)), h("div", { class: "muted mono small" }, `${m.craftName} · ${m.phase}`), bar(m.progress * 100, `${def?.name ?? m.missionId} progress`)),
-      );
-    });
+    /* ----- left: your programme, with real-world context ----- */
+    const next = available[0];
+    const parallel = next ? REAL_PARALLELS[next.id] : undefined;
 
     left.replaceChildren(
       card(
-        demo ? "Mission status · demo" : "Mission status",
-        demo ? demoBadge() : null,
-        missionRows.length ? h("ul", { class: "hq3-list" }, ...missionRows) : h("p", { class: "muted small" }, "No missions in flight. Build a spacecraft, then launch from a briefing."),
+        "Mission status",
         last && lastMission
           ? h("div", { class: `hq3-last ${last.outcome.result}` }, h("span", { class: "mono small muted" }, "LAST FLIGHT"), h("strong", null, `${lastMission.name}: ${last.outcome.headline}`), h("span", { class: "mono small" }, `${last.craftName} · ${last.outcome.fundsEarned > 0 ? `+${formatUsd(last.outcome.fundsEarned)}` : "no funding"} · rep ${last.outcome.reputation >= 0 ? "+" : ""}${last.outcome.reputation}`), h("button", { class: "btn ghost small", onclick: () => router.navigate("debrief") }, "Open debrief"))
-          : null,
+          : h("p", { class: "muted small" }, "No missions flown yet. Your first mission is waiting below."),
+        next
+          ? h(
+              "button",
+              { class: "row-btn", onclick: () => { session.selectedMissionId = next.id; router.navigate("briefing"); } },
+              h("div", { class: "mr-top" }, h("span", null, `Next: ${next.name}`), h("span", { class: "tag" }, `D${next.difficulty}`)),
+              parallel ? h("div", { class: "muted small" }, `A real mission like it: ${parallel.name} (${parallel.year})`) : null,
+            )
+          : h("p", { class: "ok small" }, "Every mission in this season is complete."),
       ),
       card(
         "Hangar bay",
@@ -199,7 +191,7 @@ export function headquarters(): HTMLElement {
         h("p", { class: "muted mono small" }, `${Math.round(seasonPct)}% complete (${seasonDone}/${seasonMissions.length} missions)`),
         h("ul", { class: "hq3-goals" }, ...season.goals.map((g) => h("li", null, g))),
       ),
-      ...(demo ? [card("Agency activity · demo", demoBadge(), h("ul", { class: "hq3-goals" }, ...DEMO_ACTIVITY.map((a) => h("li", null, a))))] : []),
+      historyCard(),
     );
 
     /* ----- right: agency ----- */
@@ -220,12 +212,9 @@ export function headquarters(): HTMLElement {
         bar(repPct, "Progress to next reputation tier"),
         h("p", { class: "muted mono small" }, tier.next ? `Next tier at ${tier.next}` : "Top tier reached"),
       ),
+      liveSpaceCard(),
       card(
-        demo ? "Technology · demo" : "Technology",
-        demo ? demoBadge() : null,
-        researchTech && research
-          ? h("div", { class: "hq3-tech" }, h("strong", null, researchTech.name), h("span", { class: "muted small" }, researchTech.description), bar((research.progress / researchTech.cost) * 100, `${researchTech.name} progress`), h("span", { class: "muted mono small" }, `${research.progress} / ${researchTech.cost} RP`))
-          : null,
+        "Technology",
         h("h5", null, "Ready to research"),
         nextTechs.length ? h("ul", { class: "hq3-list" }, ...nextTechs.map((t) => h("li", { class: "hq3-row" }, h("span", null, t.name), h("span", { class: game.researchPoints >= t.cost ? "tag" : "tag warn" }, `${t.cost} RP`)))) : h("p", { class: "muted small" }, "Nothing available right now."),
         h("button", { class: "btn ghost small", onclick: () => router.navigate("research") }, "Open research"),

@@ -7,6 +7,7 @@ import { canLaunch, ROLE_BY_ID, ROLES, type RoleChoice, type RoleId } from "../.
 import type { Flight, FlightLike, Telemetry } from "../../missions/flight";
 import { mp } from "../../net/session";
 import { audio } from "../../audio/engine";
+import { firstSentence, speak, stopSpeaking } from "../../audio/voice";
 import { RemoteFlight } from "../../net/remoteFlight";
 import { chatDock, crewStrip, type CrewRow } from "../crew";
 import { hohmannState, R_EARTH, R_MARS, R_MOON } from "../../missions/kinematics";
@@ -15,6 +16,7 @@ import { applyOutcome } from "../../missions/results";
 import { MissionScene } from "../../scene/missionScene";
 import { gameShell } from "../layout";
 import { session } from "../session";
+import { ascentQ, COUNTDOWN_FROM, createCalloutTracker, gLoad, LAUNCH_POLL, type Callout } from "../launchSequence";
 
 const SVG = "http://www.w3.org/2000/svg";
 const AU_KM = 1.496e8;
@@ -163,8 +165,10 @@ export function missionControl(): HTMLElement {
   /* ----- overlays ----- */
   const decision = h("div", { class: "mc-overlay", hidden: true });
   const ending = h("div", { class: "mc-overlay end", hidden: true });
+  const pre = h("div", { class: "mc-pre", role: "status", "aria-live": "polite", hidden: true });
+  const calloutEl = h("div", { class: "mc-callout", role: "status", "aria-live": "polite", hidden: true });
 
-  const root = h("main", { class: "screen mc" }, view, top, left, right, bottom, decision, ending);
+  const root = h("main", { class: "screen mc" }, view, top, left, right, bottom, pre, calloutEl, decision, ending);
 
   /* ----- plotting ----- */
   let trail: [number, number][] = [];
@@ -255,7 +259,24 @@ export function missionControl(): HTMLElement {
   let lastLog = -1;
   let lastExplain = "";
   let lastStages = -1;
+  const tracker = createCalloutTracker();
+  let prevMet = -1;
+  let prevVel = 0;
+  let g = 1;
+  let calloutTimer = 0;
+  const CALLER: Record<Callout["id"], RoleId> = { liftoff: "controller", "tower-clear": "controller", "mach-1": "aerospace", "max-q": "propulsion", "stage-sep": "propulsion", orbit: "controller" };
 
+  function showCallout(c: Callout): void {
+    calloutEl.replaceChildren(h("div", { class: "mc-co-tag mono" }, "FLIGHT CALL-OUT"), h("strong", null, c.title), h("p", null, c.text));
+    calloutEl.hidden = false;
+    calloutEl.classList.remove("in");
+    void calloutEl.offsetWidth;
+    calloutEl.classList.add("in");
+    say(CALLER[c.id], c.title, false);
+    speak(CALLER[c.id], `${c.title}. ${firstSentence(c.text)}`);
+    clearTimeout(calloutTimer);
+    calloutTimer = window.setTimeout(() => (calloutEl.hidden = true), 9000);
+  }
   function updateHud(t: Telemetry): void {
     audio.setThrust(f.status === "running" && t.burning ? 0.35 + Math.min(0.65, t.thrustKn / 6000) : 0);
     const stagesLeft = t.fuel.filter((x) => x.active).length;
@@ -277,6 +298,20 @@ export function missionControl(): HTMLElement {
     rAlt.el.querySelector(".mc-rl")!.textContent = t.frame === "Sun" ? "FRAME" : `ALT (${t.frame.toUpperCase()})`;
     if (t.frame === "Sun") rAlt.v.textContent = "SUN";
     rVel.el.querySelector(".mc-rl")!.textContent = `VEL (${t.frame.toUpperCase()})`;
+
+    // On the way up, distance and link delay mean little; show what the crew and the structure feel instead.
+    const climbing = t.view === "ascent";
+    if (climbing) {
+      const dtMet = t.met - prevMet;
+      if (prevMet >= 0 && dtMet > 1e-3) g += (gLoad(t.velKms - prevVel, dtMet) - g) * 0.3;
+      rDist.v.textContent = `${ascentQ(t.altKm, t.velKms).toFixed(1)} kPa`;
+      rDelay.v.textContent = `${g.toFixed(1)} g`;
+    }
+    prevMet = t.met;
+    prevVel = t.velKms;
+    rDist.el.querySelector(".mc-rl")!.textContent = climbing ? "DYNAMIC PRESSURE" : "DIST EARTH";
+    rDelay.el.querySelector(".mc-rl")!.textContent = climbing ? "G-LOAD" : "LINK DELAY";
+    for (const c of tracker({ view: t.view, burning: t.burning && !hold, altKm: t.altKm, velKms: t.velKms, stagesActive: stagesLeft })) showCallout(c);
 
     t.fuel.forEach((fu, i) => {
       const b = stageBars[i];
@@ -327,10 +362,11 @@ export function missionControl(): HTMLElement {
     crew.update(rows);
   }
 
-  function say(role: RoleId, line: string): void {
+  function say(role: RoleId, line: string, spoken = true): void {
     crewLines.set(role, line);
     speaker = role;
     speakerUntil = performance.now() + 6000;
+    if (spoken) speak(role, line);
   }
 
   /* ----- decisions and ending ----- */
@@ -422,6 +458,82 @@ export function missionControl(): HTMLElement {
     );
   }
 
+  /* ----- pre-launch: poll and countdown (single player; in a shared room the server runs the flight) ----- */
+  let hold = !remote && f.status === "running" && f.t < 5 && f.telemetry().view === "ascent";
+  const preTimers: number[] = [];
+  let igniting = false;
+  const later = (ms: number, fn: () => void) => preTimers.push(window.setTimeout(fn, reduced ? Math.min(ms, 250) : ms));
+  const station: RoleId = myRole === "all" || myRole === null ? "controller" : myRole;
+
+  function releaseHold(): void {
+    preTimers.forEach(clearTimeout);
+    pre.hidden = true;
+    hold = false;
+    audio.sfx("launch");
+  }
+
+  function runCountdown(): void {
+    const tick = (n: number) => {
+      pre.replaceChildren(
+        h("div", { class: "mc-pre-tag mono" }, "TERMINAL COUNT"),
+        h("div", { class: "mc-pre-clock mono" }, n > 0 ? `T−${String(n).padStart(2, "0")}` : "LIFTOFF"),
+        h("p", { class: "muted small" }, n > 3 ? "The count is automatic now. Computers watch thousands of readings and can stop it on their own." : n > 0 ? "Main engines start before liftoff so their thrust can be checked while the rocket is still held down." : ""),
+      );
+      if (n > 0 && n <= 5) audio.sfx("countdown");
+      if (n === COUNTDOWN_FROM) speak("controller", "T minus ten");
+      else if (n > 0 && n <= 5) speak("controller", String(n));
+      else if (n === 0) speak("controller", "Liftoff!");
+      if (n === 3) {
+        igniting = true;
+        audio.sfx("ignite");
+      }
+      if (n <= 0) {
+        later(500, releaseHold);
+        return;
+      }
+      later(1000, () => tick(n - 1));
+    };
+    tick(COUNTDOWN_FROM);
+  }
+
+  function runPoll(i: number, answered: boolean[]): void {
+    const rows = LAUNCH_POLL.map((c, k) => {
+      const mine = c.role === station;
+      const state = answered[k] ? "go" : k === i ? "now" : "wait";
+      const status = answered[k] ? h("span", { class: "mc-pre-go mono" }, "GO") : k === i && !mine ? h("span", { class: "mc-pre-wait mono" }, "…") : k === i ? null : h("span", { class: "mc-pre-wait mono" }, "—");
+      const action =
+        k === i && mine && !answered[k]
+          ? h(
+              "div",
+              { class: "mc-pre-act" },
+              h("button", { class: "btn", onclick: () => { answered[k] = true; say(c.role, c.line); audio.sfx("confirm"); runPoll(i + 1, answered); } }, "Call GO"),
+              h("button", { class: "btn ghost", onclick: () => { holdNote.hidden = false; audio.sfx("alert"); } }, "Call NO-GO"),
+            )
+          : null;
+      return h("li", { class: state }, h("div", { class: "mc-pre-row" }, h("strong", null, c.station), h("span", { class: "muted small" }, answered[k] ? c.line : k === i ? (mine ? "Your station. What is your call?" : "Checking…") : ""), status), k === i || answered[k] ? h("small", { class: "muted" }, c.why) : null, action);
+    });
+    const holdNote = h("p", { class: "mc-pre-hold small", hidden: true }, "Hold called. Real countdowns have planned holds so teams can fix a problem calmly. Here nothing is wrong, so call GO when you are ready.");
+    pre.replaceChildren(h("div", { class: "mc-pre-tag mono" }, "LAUNCH POLL · EVERY STATION MUST CALL GO"), h("ol", { class: "mc-pre-list" }, ...rows), holdNote, h("button", { class: "btn ghost mc-pre-skip", onclick: () => { audio.sfx("click"); releaseHold(); } }, "Skip to launch"));
+    if (i >= LAUNCH_POLL.length) {
+      later(700, runCountdown);
+      return;
+    }
+    const c = LAUNCH_POLL[i];
+    if (c.role !== station) {
+      later(1500, () => {
+        answered[i] = true;
+        say(c.role, c.line);
+        audio.sfx("confirm");
+        runPoll(i + 1, answered);
+      });
+    }
+  }
+
+  if (hold) {
+    pre.hidden = false;
+    later(600, () => runPoll(0, LAUNCH_POLL.map(() => false)));
+  }
+
   /* ----- main loop ----- */
   let last = performance.now();
   let raf = 0;
@@ -431,13 +543,14 @@ export function missionControl(): HTMLElement {
     raf = requestAnimationFrame(frame);
     const dt = Math.min((now - last) / 1000, 0.1);
     last = now;
-    if (f.status === "running" && !paused) {
+    if (f.status === "running" && !paused && !hold) {
       const chunk = f.chunkSeconds();
       const warp = manual ?? Math.max(1, Math.min(chunk / (f.telemetry().burning ? 6 : 8), 5e7));
       f.step(dt * warp);
     }
-    const t = f.telemetry();
-    scene.update(t, f.activeTargets());
+    const raw = f.telemetry();
+    // Engines light a few seconds before release: the scene shows the flame, but the rocket is still held down.
+    const t = hold ? { ...raw, burning: igniting, thrustKn: igniting ? raw.thrustKn : 0 } : raw;
     if (tick++ % 6 === 0) updateHud(t);
     if (f.status === "decision") showDecision();
     else if (!decision.hidden) {
@@ -451,12 +564,15 @@ export function missionControl(): HTMLElement {
     }
   };
   updateHud(f.telemetry());
-  if (f.t < 5) audio.sfx("launch");
+  if (!hold && f.t < 5) audio.sfx("launch");
   raf = requestAnimationFrame(frame);
   router.onLeave(() => {
     cancelAnimationFrame(raf);
     clearTimeout(endTimer);
     clearTimeout(aiTimer);
+    clearTimeout(calloutTimer);
+    preTimers.forEach(clearTimeout);
+    stopSpeaking();
     scene.dispose();
   });
 

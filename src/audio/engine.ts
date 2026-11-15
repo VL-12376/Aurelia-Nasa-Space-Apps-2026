@@ -72,6 +72,16 @@ class AudioEngine {
     return this.ctx !== null;
   }
 
+  get running(): boolean {
+    return this.ctx?.state === "running";
+  }
+
+  /** Called when the audio context starts or stops running, e.g. once a browser finally allows sound. */
+  onRunningChange(fn: (running: boolean) => void): void {
+    if (!this.ctx) return;
+    this.ctx.addEventListener("statechange", () => fn(this.running));
+  }
+
   /** Browsers only allow sound after a click or key press, so this is called from the first one. */
   start(): void {
     if (this.ctx) {
@@ -468,16 +478,35 @@ class AudioEngine {
 
 export const audio = new AudioEngine();
 
-/** Wires the engine to the page: starts on the first gesture, adds UI sounds and a mute button. */
+/** Wires the engine to the page: starts at once where the browser allows it, otherwise on the first gesture. */
 export function installAudio(): void {
-  const first = () => {
-    audio.start();
-    window.removeEventListener("pointerdown", first);
-    window.removeEventListener("keydown", first);
-  };
-  window.addEventListener("pointerdown", first);
-  window.addEventListener("keydown", first);
+  const prompt = document.createElement("button");
+  prompt.className = "audio-prompt";
+  prompt.textContent = "🔊 Click anywhere to start the music";
+  prompt.hidden = true;
+  document.body.append(prompt);
 
+  const sync = () => {
+    prompt.hidden = audio.running || store.get().settings.muted;
+  };
+  const resume = () => {
+    audio.start();
+    sync();
+  };
+  const gestures = ["pointerdown", "keydown", "touchend", "click"] as const;
+  const first = () => {
+    resume();
+    if (audio.running) gestures.forEach((g) => window.removeEventListener(g, first, true));
+  };
+  gestures.forEach((g) => window.addEventListener(g, first, true));
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) resume();
+  });
+
+  // Many browsers allow sound at once for returning visitors; the rest stay silent until a gesture.
+  audio.start();
+  audio.onRunningChange(sync);
+  window.setTimeout(sync, 400);
   document.addEventListener("click", (e) => {
     const el = (e.target as HTMLElement | null)?.closest("button, select, summary, [role=tab]") as HTMLElement | null;
     if (!el || el.hasAttribute("disabled") || el.id === "audio-toggle") return;
@@ -502,6 +531,7 @@ export function installAudio(): void {
     store.updateSettings({ muted: !store.get().settings.muted });
     audio.applySettings();
     paint();
+    sync();
   });
   paint();
   document.body.append(btn);

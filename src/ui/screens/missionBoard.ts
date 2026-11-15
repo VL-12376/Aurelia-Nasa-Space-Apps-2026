@@ -295,7 +295,7 @@ export function missionBoard(): HTMLElement {
       gg.fleet = gg.fleet.filter((c) => c.id !== craftId);
       gg.flights += 1;
     });
-    session.flight = new Flight(design, m, seed, { plan, difficulty: g.difficulty, sandbox: g.sandbox, ...currentSpaceWeather() });
+    session.flight = new Flight(design, m, seed, { plan, difficulty: g.difficulty, sandbox: g.sandbox, crewEvents: true, ...currentSpaceWeather() });
     session.flightMissionId = m.id;
     session.flightSeed = seed;
     session.flightApplied = false;

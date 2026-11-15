@@ -1,9 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { createCalloutTracker, gLoad, LAUNCH_POLL, type AscentSample } from "./launchSequence";
+import { createCalloutTracker, gLoad, LAUNCH_POLL, SHARED_LAUNCH_MS, sharedLaunchStage, type AscentSample } from "./launchSequence";
 
 const s = (o: Partial<AscentSample>): AscentSample => ({ view: "ascent", burning: true, altKm: 0, velKms: 0, stagesActive: 2, ...o });
 
 describe("launch sequence", () => {
+  it("holds shared flights through each station poll and the full ten-second count", () => {
+    expect(sharedLaunchStage(0)).toEqual({ pollIndex: 0, countdown: null });
+    expect(sharedLaunchStage(5_000)).toEqual({ pollIndex: 1, countdown: null });
+    expect(sharedLaunchStage(15_000)).toEqual({ pollIndex: 3, countdown: null });
+    expect(sharedLaunchStage(20_000)).toEqual({ pollIndex: 4, countdown: null });
+    expect(sharedLaunchStage(23_000)).toEqual({ pollIndex: 4, countdown: 10 });
+    expect(sharedLaunchStage(SHARED_LAUNCH_MS - 1)).toEqual({ pollIndex: 4, countdown: 1 });
+    expect(sharedLaunchStage(SHARED_LAUNCH_MS)).toBeNull();
+  });
   it("polls every role and ends with the flight director", () => {
     expect(new Set(LAUNCH_POLL.map((p) => p.role)).size).toBe(4);
     expect(LAUNCH_POLL[LAUNCH_POLL.length - 1].role).toBe("controller");

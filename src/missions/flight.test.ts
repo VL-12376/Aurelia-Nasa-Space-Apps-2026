@@ -4,6 +4,8 @@ import { addPart, analyse, emptyDesign, type Design } from "../spacecraft/design
 import { TEMPLATES } from "../spacecraft/templates";
 import { Flight, hashSeed, launchBlockers, preflight, type Outcome } from "./flight";
 import { PROFILES, profileDeltaV } from "./profiles";
+import { CREW_CHECKS } from "./crewEvents";
+import { roleForEvent } from "../crew/roles";
 
 const mission = (id: string) => MISSIONS.find((m) => m.id === id)!;
 const template = (id: string): Design => structuredClone(TEMPLATES.find((t) => t.id === id)!.design);
@@ -56,6 +58,77 @@ describe("launch gate", () => {
 });
 
 describe("flight simulation", () => {
+  it("earns more funding for more accurate manual checks even when both missions succeed", () => {
+    const flyChecks = (skill: number) => {
+      const f = new Flight(template("light-launcher"), mission("s1-first-satellite"), 3, { crewEvents: true, difficulty: "cadet" });
+      for (let i = 0; i < 5000 && !f.outcome; i++) {
+        if (f.pending) {
+          const ids = f.pending.options.filter((o) => !o.disabled).map((o) => o.id);
+          f.decide(ids.includes("shutdown") ? "shutdown" : ids[0], skill);
+        } else f.step(600);
+      }
+      return f.outcome!;
+    };
+    const precise = flyChecks(1);
+    const average = flyChecks(0.5);
+    expect(precise.result).toBe("success");
+    expect(average.result).toBe("success");
+    expect(precise.funding!.baseAwardUsd).toBe(average.funding!.baseAwardUsd);
+    expect(precise.funding!.accuracyPct).toBe(100);
+    expect(average.funding!.accuracyPct).toBeLessThan(100);
+    expect(average.funding!.checkPenaltyPct).toBe(0);
+    expect(precise.fundsEarned).toBeGreaterThan(average.fundsEarned);
+    expect(average.fundsEarned).toBe(Math.round(average.funding!.baseAwardUsd * average.funding!.accuracyMultiplier));
+  });
+
+  it("guarantees two playable station checks for every role across all difficulties", () => {
+    for (const difficulty of ["cadet", "engineer", "director"] as const) {
+      const f = new Flight(template("light-launcher"), mission("s1-first-satellite"), 3, { crewEvents: true, difficulty });
+      const checks: string[] = [];
+      for (let i = 0; i < 5000 && !f.outcome; i++) {
+        if (f.pending) {
+          expect(f.pending.timeS).toBe(45);
+          if (f.pending.eventId.startsWith("crew-")) {
+            checks.push(f.pending.eventId);
+            expect(f.pending.options.find((o) => o.id === "calibrate")?.manual).toBeTruthy();
+            f.decide("calibrate", 1);
+          } else {
+            const ids = f.pending.options.filter((o) => !o.disabled).map((o) => o.id);
+            f.decide(ids.includes("shutdown") ? "shutdown" : ids[0]);
+          }
+        } else f.step(600);
+      }
+      expect(f.outcome?.result).toBe("success");
+      expect(new Set(checks)).toEqual(new Set(CREW_CHECKS.map((c) => c.id)));
+      for (const role of ["aerospace", "propulsion", "controller", "science"]) {
+        expect(checks.filter((id) => roleForEvent(id) === role)).toHaveLength(2);
+      }
+    }
+  });
+
+  it("missed checks have visible, lasting funding consequences and are recorded as timeouts", () => {
+    const run = (timeout: boolean) => {
+      const f = new Flight(template("light-launcher"), mission("s1-first-satellite"), 3, { crewEvents: true, difficulty: "cadet" });
+      for (let i = 0; i < 5000 && !f.outcome; i++) {
+        if (f.pending) {
+          if (f.pending.eventId.startsWith("crew-")) {
+            if (timeout) f.decideTimeout();
+            else f.decide("calibrate", 1);
+          } else {
+            const ids = f.pending.options.filter((o) => !o.disabled).map((o) => o.id);
+            f.decide(ids.includes("shutdown") ? "shutdown" : ids[0]);
+          }
+        } else f.step(600);
+      }
+      return f;
+    };
+    const ready = run(false);
+    const late = run(true);
+    expect(late.decisions.filter((d) => d.eventId.startsWith("crew-")).every((d) => d.timedOut)).toBe(true);
+    expect(late.outcome!.fundsEarned).toBeLessThan(ready.outcome!.fundsEarned);
+    expect(late.outcome!.events!.some((e) => e.text.includes("Response time expired.") && e.text.includes("3%"))).toBe(true);
+  });
+
   it("is deterministic for a given seed", () => {
     const a = fly(template("earth-watch"), "s1-earth-watch", 42);
     const b = fly(template("earth-watch"), "s1-earth-watch", 42);

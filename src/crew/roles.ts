@@ -1,4 +1,5 @@
 import type { Part, PartCategory } from "../spacecraft/parts";
+import { CREW_CHECKS } from "../missions/crewEvents";
 
 /** Vite sets BASE_URL in the browser build; the Node server has no import.meta.env, so fall back to the root. */
 const BASE: string = import.meta.env?.BASE_URL ?? "/";
@@ -106,7 +107,7 @@ export function canLaunch(role: RoleChoice | null): boolean {
 
 /** Which role decides a given flight event. */
 export function roleForEvent(eventId: string): RoleId {
-  return ROLES.find((r) => r.events.includes(eventId))?.id ?? "controller";
+  return CREW_CHECKS.find((c) => c.id === eventId)?.role ?? ROLES.find((r) => r.events.includes(eventId))?.id ?? "controller";
 }
 
 /** The role responsible for a part category, used to explain who to ask. */

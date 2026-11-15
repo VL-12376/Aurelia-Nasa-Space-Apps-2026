@@ -5,6 +5,7 @@ import { ROLES, type RoleId } from "../../crew/roles";
 import type { ClientMsg } from "../../net/protocol";
 import { mp } from "../../net/session";
 import { chatDock, roleCard } from "../crew";
+import { playerLevel } from "../../core/progression";
 
 /** Multiplayer lobby: connect to the server, create or join a room, pick one of four roles. */
 export function multiplayerScreen(): HTMLElement {
@@ -65,10 +66,11 @@ export function multiplayerScreen(): HTMLElement {
           { class: "panel hud mp-form" },
           h("h3", null, "Start or join"),
           h("label", { class: "mp-check" }, h("input", { type: "checkbox", checked: sandbox, onchange: (e: Event) => { sandbox = (e.target as HTMLInputElement).checked; } }), " Sandbox: unlock all technology so every mission can be flown"),
-          h("button", { class: "btn", disabled: busy, onclick: () => withConnection({ t: "create", name, sandbox }) }, "Create a room"),
+          h("p", { class: "muted small" }, `You are level ${playerLevel(store.get().player.experience)}. Players at any level can join the same room; the room's campaign unlocks are shared.`),
+          h("button", { class: "btn", disabled: busy, onclick: () => withConnection({ t: "create", name, sandbox, experience: store.get().player.experience }) }, "Create a room"),
           h("div", { class: "mp-or mono" }, "OR"),
           field("Room code", h("input", { type: "text", maxlength: 4, value: code, placeholder: "ABCD", class: "mono", oninput: (e: Event) => { code = (e.target as HTMLInputElement).value.toUpperCase(); (e.target as HTMLInputElement).value = code; } })),
-          h("button", { class: "btn ghost", disabled: busy, onclick: () => withConnection({ t: "join", code, name }) }, "Join a room"),
+          h("button", { class: "btn ghost", disabled: busy, onclick: () => withConnection({ t: "join", code, name, experience: store.get().player.experience }) }, "Join a room"),
         ),
       ),
     );
@@ -86,7 +88,7 @@ export function multiplayerScreen(): HTMLElement {
         "div",
         { class: "panel hud mp-code" },
         h("div", null, h("div", { class: "muted mono small" }, "ROOM CODE"), h("div", { class: "mp-code-big mono" }, room.code), h("div", { class: "muted small" }, room.sandbox ? "Sandbox: all technology unlocked" : "Campaign: starter technology, Season 1")),
-        h("div", { class: "mp-players" }, ...room.players.map((p) => h("div", { class: `mp-player${p.id === mp.id ? " me" : ""}` }, h("span", { class: `dot ${p.ready ? "ready" : ""}` }), h("span", null, `${p.name}${p.host ? " (host)" : ""}${p.id === mp.id ? " · you" : ""}`), h("span", { class: "muted mono small" }, p.role ? ROLES.find((r) => r.id === p.role)!.title : "no role yet")))),
+        h("div", { class: "mp-players" }, ...room.players.map((p) => h("div", { class: `mp-player${p.id === mp.id ? " me" : ""}` }, h("span", { class: `dot ${p.ready ? "ready" : ""}` }), h("span", null, `${p.name}${p.host ? " (host)" : ""}${p.id === mp.id ? " · you" : ""} · Level ${p.level ?? 1}`), h("span", { class: "muted mono small" }, p.role ? ROLES.find((r) => r.id === p.role)!.title : "no role yet")))),
         h("button", { class: "btn ghost small", onclick: () => navigator.clipboard?.writeText(room.code) }, "Copy code"),
       ),
       h("p", { class: "muted small" }, "Pick your role. Roles nobody takes are played by AI crew. When everyone is ready, the host starts the mission."),

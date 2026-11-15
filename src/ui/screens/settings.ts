@@ -3,8 +3,11 @@ import { openDialog } from "../dialog";
 import { router } from "../../core/router";
 import { store, type Settings } from "../../core/store";
 import { audio } from "../../audio/engine";
-import { speak, stopSpeaking } from "../../audio/voice";
+import { crewLine, speak, stopSpeaking } from "../../audio/voice";
+import { ROLES } from "../../crew/roles";
 import { DISCLAIMER } from "../../data/real";
+import { mp } from "../../net/session";
+import { session } from "../session";
 
 function slider(id: string, label: string, value: number, onInput: (v: number) => void): HTMLElement {
   const input = h("input", { type: "range", id, min: 0, max: 100, step: 1, value: Math.round(value * 100), "aria-label": label, oninput: (e: Event) => onInput(Number((e.target as HTMLInputElement).value) / 100) });
@@ -22,7 +25,15 @@ function confirmClearAll(): void {
           label: "Yes, erase everything",
           kind: "danger",
           onClick: () => {
-            store.clearProgress();
+            if (mp.active) mp.leave();
+            session.flight = null;
+            session.flightApplied = false;
+            session.selectedMissionId = null;
+            session.selectedCraftId = null;
+            if (!store.clearProgress()) {
+              toast("Saved data could not be erased. Allow local storage and try again.");
+              return;
+            }
             toast("All data erased. You are back at level one.");
             router.navigate("menu");
           },
@@ -83,8 +94,9 @@ export function settingsScreen(): HTMLElement {
         h("div", { class: "field" }, h("label", { for: "set-motion" }, "Reduce motion (stops background animation and transitions)"), motion),
         h("div", { class: "field" }, h("label", { for: "set-density" }, "Starfield density"), density),
         h("h3", { style: { margin: "18px 0 8px" } }, "Sound"),
-        h("p", { class: "muted small" }, "All music and effects are generated live in your browser, so nothing is downloaded and there are no copyright restrictions."),
-        h("div", { class: "field" }, h("label", { for: "set-voice" }, "Crew voices (read aloud by your device's built-in speech, no recordings)"), h("input", { type: "checkbox", id: "set-voice", checked: settings.voice, onchange: (e: Event) => { const on = (e.target as HTMLInputElement).checked; store.updateSettings({ voice: on }); if (on) speak("controller", "All stations, this is Mission Control. Voice check."); else stopSpeaking(); } })),
+        h("p", { class: "muted small" }, "Music and effects are generated in your browser. Original crew recordings use four distinct voices from public-domain datasets: Mira and Elena are female; Kenji and Arjun are male. Unscripted explanations use device speech."),
+        h("div", { class: "field" }, h("label", { for: "set-voice" }, "Crew voices"), h("input", { type: "checkbox", id: "set-voice", checked: settings.voice, onchange: (e: Event) => { const on = (e.target as HTMLInputElement).checked; store.updateSettings({ voice: on }); if (on) void speak("controller", crewLine("controller", "voice-check")); else stopSpeaking(); } })),
+        h("div", { class: "mg-actions" }, ...ROLES.map((r) => h("button", { class: "btn ghost small", onclick: () => { stopSpeaking(); void speak(r.id, crewLine(r.id, "voice-check")); } }, `Hear ${r.name.replace(/^Dr\. /, "").split(" ")[0]}`))),
         slider("set-music", "Music volume", settings.musicVolume, (v) => sound({ musicVolume: v })),
         slider("set-sfx", "Effects volume", settings.sfxVolume, (v) => { sound({ sfxVolume: v }); audio.sfx("confirm"); }),
         h("div", { class: "field" }, h("label", { for: "set-mute" }, "Mute everything"), h("input", { type: "checkbox", id: "set-mute", checked: settings.muted, onchange: (e: Event) => sound({ muted: (e.target as HTMLInputElement).checked }) })),
@@ -104,7 +116,7 @@ export function settingsScreen(): HTMLElement {
         h(
           "ul",
           { class: "muted small", style: { paddingLeft: "18px", margin: "8px 0" } },
-          ...["Space data: open government space-science data (public domain)", "Research figures: published research measurements", "Music and sound effects: synthesised in your browser", "Crew voices: your device's own speech engine", "Crew portraits and banner: AI-generated images, watermarked", "Code, lessons and text: written with AI assistance (GitHub Copilot)"].map((t) => h("li", null, t)),
+          ...["Space data: open government space-science data (public domain)", "Research figures: published research measurements", "Music and sound effects: synthesised in your browser", "Crew voices: original Piper-generated recordings from public-domain voice datasets (CC0 audio); device speech for unscripted lines", "Crew portraits and banner: AI-generated images, watermarked", "Code, lessons and text: written with AI assistance (GitHub Copilot)"].map((t) => h("li", null, t)),
         ),
       ),
     ),

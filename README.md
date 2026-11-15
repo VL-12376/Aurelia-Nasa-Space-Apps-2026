@@ -10,7 +10,7 @@ Physics is simplified for teaching, and the game labels which values are real me
 
 - **Code, lessons and text:** written with AI assistance (the GitHub Copilot assistant in VS Code), then run and tested by the team.
 - **Images:** the four crew portraits and the multiplayer banner in `public/crew/` are AI-generated and carry a visible "AI-GENERATED IMAGE" watermark.
-- **Audio:** music and sound effects are synthesised by code in the browser. Crew voices come from the player's own device speech engine.
+- **Audio:** music and sound effects are synthesised by code in the browser. Scripted crew dialogue is original, locally generated speech with four distinct voices trained on public-domain datasets. See [audio provenance and licensing](public/crew-audio/LICENSE.md). Unscripted explanations use device speech.
 
 ## Run it
 
@@ -26,10 +26,12 @@ npm run build      # typecheck and production build
 
 - **Single-player**: choose a crew role (Aerospace, Propulsion, Mission Controller, Science and Systems). The other three are AI crew who fit their own parts on request and make their own decisions during flights. Or play all four roles yourself.
 - **Multiplayer**: up to four people create or join a room with a 4-letter code and claim a role each. Unclaimed roles are played by AI. See [docs/multiplayer-architecture.md](docs/multiplayer-architecture.md).
-- **Sound**: all music and effects are generated live in the browser (Web Audio), so there are no audio files and no licensing issues. It starts by itself where the browser allows it, and otherwise on your first click. Volume, mute and crew voices are in Settings, and the speaker button bottom-left.
+- **Sound**: music and effects are generated live in the browser (Web Audio). Bundled crew recordings give Mira and Elena distinct female voices, and Kenji and Arjun distinct male voices. All dialogue is queued, so characters finish their lines without interrupting one another. Launch polls wait for speech in solo mode; shared flights use a server-timed poll and ten-second countdown. Audio starts where the browser allows it, otherwise on your first click. Settings includes individual voice previews, volumes and mute.
 - **Mission planning** (single-player and sandbox): in the briefing choose an orbit (low Earth, Sun-synchronous, medium, geostationary, or a circular or elliptical lunar orbit) and a launch vehicle from a catalogue of five generic vehicles (small, medium, medium-heavy, a retired 1960s super-heavy, and a modern super-heavy) or fly your own rocket. Transfer costs come from orbital mechanics; vehicle stages and payload capacities are simplified from published figures, and the launch gate checks the spacecraft against the vehicle's published capacity. The hangar's Mission resources panel tracks mass, power, communications, data, lifetime and budget. Data rates and lifetimes are labelled game models.
-- **Difficulty and sandbox**: Cadet, Engineer and Director change how often trouble strikes, how long you have to react and how much a score is worth. Sandbox unlocks everything with unlimited funds and is never scored.
-- **Events**: each anomaly gives an early warning, a live timer, odds that depend on your design, optional manual control as a timing mini-game, and lasting consequences listed in the debrief.
+- **Difficulty and sandbox**: Cadet, Engineer and Director change how often anomalies strike and how much a score is worth. Every human response gets 45 seconds, regardless of difficulty or reduced-motion settings. Sandbox unlocks everything with unlimited funds and does not earn personal XP or leaderboard scores.
+- **Events**: every launched mission schedules two guaranteed station checks per character, in addition to design-dependent anomalies. Solo players handle their chosen character's checks (or all four), and multiplayer players handle their own station. The visible 45-second timer includes the three-attempt timing mini-game. Unclaimed stations are AI-run. A failed, deferred or timed-out check reduces final mission funding by 3% and increases later anomaly risk. Other timed-out decisions take the spacecraft's default action, which can lose objectives or fail a critical mission. Consequences appear in the log, a notification and the debrief.
+- **Player levels and rewards**: new campaigns and cleared saves start at player level 1. Player XP is separate from campaign seasons: cumulative thresholds are 100 XP for level 2, 400 for level 3, 900 for level 4, then `100 × (level - 1)²`. Each promotion earns a persistent badge. Mission XP, achievements and season-completion awards appear in a collectable popup on returning to Headquarters, including after co-op missions. Campaign seasons still unlock when all their missions are complete; mission and technology prerequisites remain campaign-based. Players at different personal levels may join the same multiplayer room and retain their own XP on their device.
+- **Budget and funding**: builds and mission operations deduct their actual costs. Headquarters shows the current available balance, total spent and mission funding added, with exact dollar amounts so small purchases are visible. The initial $25B allocation remains labelled separately. Mission objectives, science and lifetime determine the base award; response accuracy scales it from 0.50 to 1.00 (`0.5 + accuracy / 200`, with accuracy as a percentage), and each missed station check deducts another 3%. Failed missions earn no funding. Manual timing scores, deferred station checks and timeouts determine response accuracy; other decisions affect funding through their physical mission consequences, not the colour of a log entry. Unclaimed AI stations complete routine checks at full accuracy. Earned funding replenishes the balance and is reinvested across the spending categories, in both solo and co-op. The debrief explains the calculation.
 - **Share and compare**: in the hangar, Share makes a copyable design code and loads one back; Compare sets two designs side by side with their trade-offs. Settings has a double-confirmed Clear all data.
 
 ## Leaderboard
@@ -43,6 +45,7 @@ Every scored mission (never sandbox) gets a score out of 100, scaled by difficul
 - Free hosts put an idle server to sleep, so the first connection after a quiet spell can take up to a minute.
 - **Automatic server updates:** Render does not always redeploy on a push by itself. In Render open the service, Settings, Deploy Hook, and copy the URL. In GitHub open Settings, Secrets and variables, Actions, and add a repository secret named `RENDER_DEPLOY_HOOK` with that URL. The `Redeploy server` workflow then deploys the server whenever the game's code changes. You can also run it by hand from the Actions tab.
 - Optional: set `ALLOWED_ORIGINS` on the server to your Pages address so only your copy of the game can connect.
+- Render's `/health` response includes its deployed commit in `revision`, from `RENDER_GIT_COMMIT`, so an update can be verified rather than just checking that the old server is healthy.
 
 ## Tech
 
@@ -100,4 +103,4 @@ Real figures come from public-domain government space-science data and published
 
 Contains public-domain government space-science data. AURELIA is an independent game. The full source list is in Settings and the Academy.
 
-Crew voices use your device's built-in speech synthesis (no recordings); music and effects are synthesised in the browser.
+Scripted crew recordings are original CC0 audio generated with Piper and four public-domain dataset voices; device speech covers unscripted lines. Music and effects are synthesised in the browser.

@@ -135,7 +135,7 @@ export function startServer(port = DEFAULT_PORT, host = "0.0.0.0", options: Serv
     if (url.pathname === "/api/scores") return handleScores(req, res, url);
     if (req.url === "/health") {
       res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*" });
-      res.end(JSON.stringify({ ok: true, rooms: rooms.size, players: conns.size }));
+      res.end(JSON.stringify({ ok: true, rooms: rooms.size, players: conns.size, revision: process.env.RENDER_GIT_COMMIT ?? null }));
       return;
     }
     if (req.url === "/api/space" && req.method === "GET") {
@@ -178,9 +178,9 @@ export function startServer(port = DEFAULT_PORT, host = "0.0.0.0", options: Serv
     if (room.empty) rooms.delete(room.code);
   };
 
-  const issueSeat = (c: Conn, room: Room, name: string): string | null => {
+  const issueSeat = (c: Conn, room: Room, name: string, experience = 0): string | null => {
     const token = randomBytes(16).toString("hex");
-    const err = room.addPlayer(c.id, name, token);
+    const err = room.addPlayer(c.id, name, token, experience);
     if (err) return err;
     c.room = room;
     c.token = token;
@@ -213,7 +213,7 @@ export function startServer(port = DEFAULT_PORT, host = "0.0.0.0", options: Serv
           if (rooms.size >= MAX_ROOMS) return send(c.id, { t: "error", message: "The server is busy. Try again in a few minutes." });
           const room = new Room(newCode(), !!msg.sandbox, transport, scores);
           rooms.set(room.code, room);
-          const err = issueSeat(c, room, String(msg.name ?? ""));
+          const err = issueSeat(c, room, String(msg.name ?? ""), msg.experience);
           if (err) {
             rooms.delete(room.code);
             return send(c.id, { t: "error", message: err });
@@ -224,7 +224,7 @@ export function startServer(port = DEFAULT_PORT, host = "0.0.0.0", options: Serv
           if (c.room) leave(c);
           const room = rooms.get(String(msg.code ?? "").trim().toUpperCase());
           if (!room) return send(c.id, { t: "error", message: "No room with that code." });
-          const err = issueSeat(c, room, String(msg.name ?? ""));
+          const err = issueSeat(c, room, String(msg.name ?? ""), msg.experience);
           if (err) return send(c.id, { t: "error", message: err });
           return;
         }

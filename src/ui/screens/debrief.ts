@@ -3,7 +3,7 @@ import { DIFFICULTY_BY_ID } from "../../core/play";
 import type { FlightReport } from "../../core/gameState";
 import { router } from "../../core/router";
 import { store } from "../../core/store";
-import { formatUsd } from "../../budget/budget";
+import { formatUsd, formatUsdExact } from "../../budget/budget";
 import { MISSIONS } from "../../missions/missions";
 import { gameShell } from "../layout";
 import { submitFlight } from "../../net/leaderboard";
@@ -58,6 +58,16 @@ export function debriefScreen(): HTMLElement {
       stat("Experience", `+${o.experience}`),
     ),
     scorePanel(rep, !!remote, !!g.sandbox),
+    o.funding ? h(
+      "div", { class: "panel hud" }, h("h3", null, "Funding and response accuracy"),
+      kv("Base mission award", formatUsdExact(o.funding.baseAwardUsd)),
+      kv("Response accuracy", `${o.funding.accuracyPct}%`),
+      kv("Accuracy multiplier", `${o.funding.accuracyMultiplier.toFixed(2)}x`),
+      kv("Missed-check penalty", `${o.funding.checkPenaltyPct}%`),
+      kv("Credited to agency budget", formatUsdExact(o.fundsEarned)),
+      kv("Available budget now", formatUsdExact(g.funds)),
+      h("p", { class: "muted small" }, "Objectives, science and reliability set the base award. Manual timing accuracy and missed responses determine the accuracy multiplier (0.50 to 1.00); each missed station check deducts another 3%. Other choices affect funding through their mission consequences. Funding is added back to the agency's spending categories."),
+    ) : null,
     h(
       "div",
       { class: "grid cols-2" },
@@ -100,7 +110,7 @@ export function debriefScreen(): HTMLElement {
     o.result !== "success" ? h("div", { class: "panel hud" }, h("h3", null, "What to change"), h("ul", { class: "lessons" }, ...fix.map((l) => h("li", null, l)))) : null,
     h("details", { class: "panel hud" }, h("summary", null, "Full mission log"), h("ul", { class: "mc-log full" }, ...rep.log.map((l) => h("li", { class: l.tone }, h("span", { class: "mono muted" }, fmtT(l.t)), h("span", null, l.text))))),
     remote
-      ? h("div", { class: "mb-actions" }, mp.isHost ? h("button", { class: "btn", onclick: () => mp.send({ t: "toHangar" }) }, "Back to the hangar for the next mission") : h("span", { class: "muted small" }, "Waiting for the host to return the crew to the hangar."), h("button", { class: "btn ghost", onclick: () => router.navigate("leaderboard") }, "View leaderboard"), h("button", { class: "btn ghost small", onclick: () => { mp.leave(); router.navigate("menu"); } }, "Leave room"))
+      ? h("div", { class: "mb-actions" }, mp.isHost ? h("button", { class: "btn", onclick: () => mp.send({ t: "toHangar" }) }, "Return crew to headquarters") : h("button", { class: "btn", onclick: () => router.navigate("hq") }, "Return to headquarters"), h("button", { class: "btn ghost", onclick: () => router.navigate("leaderboard") }, "View leaderboard"), h("button", { class: "btn ghost small", onclick: () => { mp.leave(); router.navigate("menu"); } }, "Leave room"))
       : h(
           "div",
           { class: "mb-actions" },

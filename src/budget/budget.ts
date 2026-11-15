@@ -50,6 +50,21 @@ export function formatUsd(amount: number): string {
   return `${sign}$${abs.toFixed(0)}`;
 }
 
+export const formatUsdExact = (amount: number): string =>
+  amount.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+
+/** Adds mission funding to the shared balance and reinvests it in each category. */
+export function addFunding(funds: number, allocation: Allocation, amount: number): number {
+  if (!Number.isFinite(amount) || amount < 0) throw new RangeError("Funding must be a non-negative amount.");
+  let remaining = amount;
+  BUDGET_CATEGORIES.forEach((category, index) => {
+    const share = index === BUDGET_CATEGORIES.length - 1 ? remaining : Math.floor(amount * category.share);
+    allocation[category.id].planned += share;
+    remaining -= share;
+  });
+  return funds + amount;
+}
+
 /** Spends from a category. Returns false (and changes nothing) if funds are short. */
 export function trySpend(
   funds: number,

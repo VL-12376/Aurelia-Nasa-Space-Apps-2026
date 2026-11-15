@@ -25,6 +25,7 @@ export interface ActiveResearch {
 }
 
 export interface FlightReport {
+  flightNumber?: number;
   missionId: string;
   craftName: string;
   seed: number;
@@ -45,6 +46,7 @@ export interface GameState {
   year: number;
   funds: number;
   annualBudget: number;
+  fundingEarned: number;
   allocation: Allocation;
   reputation: number;
   researchPoints: number;
@@ -84,6 +86,7 @@ export function newGameState(mode: GameMode, season = 1): GameState {
     year: 1,
     funds: ANNUAL_BUDGET_USD,
     annualBudget: ANNUAL_BUDGET_USD,
+    fundingEarned: 0,
     allocation: defaultAllocation(),
     reputation: 10,
     researchPoints: 0,

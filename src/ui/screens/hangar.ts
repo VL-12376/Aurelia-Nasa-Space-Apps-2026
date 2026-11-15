@@ -1,7 +1,7 @@
 import { fill, h, toast } from "../../core/dom";
 import { router } from "../../core/router";
 import { store } from "../../core/store";
-import { BUDGET_CATEGORIES, formatUsd, trySpend, type BudgetCategoryId } from "../../budget/budget";
+import { BUDGET_CATEGORIES, formatUsd, formatUsdExact, trySpend, type BudgetCategoryId } from "../../budget/budget";
 import { MISSIONS, missionsForSeason } from "../../missions/missions";
 import { capacityCheck } from "../../launch/vehicles";
 import { planDesign, resolvePlan } from "../../missions/plan";
@@ -385,9 +385,9 @@ export function hangarScreen(): HTMLElement {
     fill(
       budget,
       h("h4", null, "Budget"),
-      kv("Available funds", formatUsd(g.funds)),
-      kv("This design", formatUsd(stats.cost)),
-      h("div", { class: "kv" }, h("span", { class: "k" }, "Funds after build"), h("span", { class: `v mono ${after < 0 ? "bad" : "ok"}` }, formatUsd(after))),
+      kv("Available funds", formatUsdExact(g.funds)),
+      kv("This design", formatUsdExact(stats.cost)),
+      h("div", { class: "kv" }, h("span", { class: "k" }, "Funds after build"), h("span", { class: `v mono ${after < 0 ? "bad" : "ok"}` }, formatUsdExact(after))),
       ...catRows,
       stats.costByCategory.spacecraft + stats.costByCategory.propulsion + stats.costByCategory.instruments > 0 &&
       (["spacecraft", "propulsion", "instruments"] as BudgetCategoryId[]).some((id) => stats.costByCategory[id] > g.allocation[id].planned - g.allocation[id].spent)
@@ -440,9 +440,9 @@ export function hangarScreen(): HTMLElement {
     buildBtn.textContent = !remote && !acts("aerospace") ? `Ask ${aero.name.split(" ").slice(-1)[0]} to build` : "Build spacecraft";
     buildBtn.title = !mayBuild ? `Only the ${aero.title} approves a build.` : stats.errors[0] ?? (stats.cost > g.funds ? "Not enough funds." : design.parts.length ? "Pay for this design and add it to your fleet." : "Add parts first.");
     strip.replaceChildren(
-      h("div", { class: "hs" }, h("span", { class: "hs-l" }, "Funds"), h("span", { class: "hs-v mono" }, formatUsd(g.funds))),
+      h("div", { class: "hs" }, h("span", { class: "hs-l" }, "Funds"), h("span", { class: "hs-v mono" }, formatUsdExact(g.funds))),
       h("div", { class: "hs" }, h("span", { class: "hs-l" }, "Design cost"), h("span", { class: "hs-v mono" }, formatUsd(stats.cost))),
-      h("div", { class: `hs ${g.funds - stats.cost < 0 ? "bad" : ""}` }, h("span", { class: "hs-l" }, "After build"), h("span", { class: "hs-v mono" }, formatUsd(g.funds - stats.cost))),
+      h("div", { class: `hs ${g.funds - stats.cost < 0 ? "bad" : ""}` }, h("span", { class: "hs-l" }, "After build"), h("span", { class: "hs-v mono" }, formatUsdExact(g.funds - stats.cost))),
       nameInput,
       buildBtn,
     );

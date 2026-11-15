@@ -16,6 +16,16 @@ export const LAUNCH_POLL: readonly PollCall[] = [
 ];
 
 export const COUNTDOWN_FROM = 10;
+export const LAUNCH_POLL_MS = 5_000;
+export const COUNT_INTRO_MS = 3_000;
+export const SHARED_LAUNCH_MS = LAUNCH_POLL.length * LAUNCH_POLL_MS + COUNT_INTRO_MS + COUNTDOWN_FROM * 1000;
+
+export function sharedLaunchStage(elapsedMs: number): { pollIndex: number; countdown: number | null } | null {
+  if (elapsedMs >= SHARED_LAUNCH_MS) return null;
+  const pollIndex = Math.min(LAUNCH_POLL.length, Math.floor(elapsedMs / LAUNCH_POLL_MS));
+  const countElapsed = elapsedMs - LAUNCH_POLL.length * LAUNCH_POLL_MS - COUNT_INTRO_MS;
+  return { pollIndex, countdown: countElapsed < 0 ? null : COUNTDOWN_FROM - Math.floor(countElapsed / 1000) };
+}
 
 export interface AscentSample {
   view: string;

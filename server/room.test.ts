@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import { addPart, emptyDesign } from "../src/spacecraft/design";
 import type { ClientMsg, FlightSnapshot, RoomView, ServerMsg } from "../src/net/protocol";
 import { Room, validateDesign, type Transport } from "./room";
+import { Flight } from "../src/missions/flight";
+import { MISSIONS } from "../src/missions/missions";
+import { TEMPLATES } from "../src/spacecraft/templates";
+import { SHARED_LAUNCH_MS } from "../src/ui/launchSequence";
 
 class Fake implements Transport {
   inbox = new Map<string, ServerMsg[]>();
@@ -36,6 +40,19 @@ function lobby(roles: (string | null)[], sandbox = false) {
 const send = (room: Room, id: string, msg: ClientMsg) => room.handle(id, msg);
 
 describe("room membership and roles", () => {
+  it("allows players with different personal levels in the same campaign", () => {
+    const net = new Fake();
+    const room = new Room("ABCD", false, net);
+    expect(room.addPlayer("new", "New", "", 0)).toBeNull();
+    expect(room.addPlayer("experienced", "Experienced", "", 400)).toBeNull();
+    expect(net.room("new").players.map((p) => p.level)).toEqual([1, 3]);
+    expect(net.room("new").game.season).toBe(1);
+    room.handle("new", { t: "role", role: "aerospace" });
+    room.handle("experienced", { t: "role", role: "controller" });
+    room.handle("new", { t: "start" });
+    expect(net.room("new").phase).toBe("hangar");
+  });
+
   it("accepts four players and refuses a fifth", () => {
     const { room } = lobby([null, null, null, null]);
     expect(room.addPlayer("p5", "Late")).toMatch(/full/);
@@ -97,6 +114,33 @@ describe("shared spacecraft and permissions", () => {
 });
 
 describe("a full mission in one room", () => {
+  it("holds launch, gives humans exactly 45 seconds even while paused, and rejects late responses", () => {
+    const { net, room } = lobby(["aerospace", "propulsion", "controller", "science"]);
+    room.phase = "flight";
+    const m = MISSIONS.find((m) => m.id === "s1-first-satellite")!;
+    room.missionId = m.id;
+    room.flight = new Flight(structuredClone(TEMPLATES.find((t) => t.id === "light-launcher")!.design), m, 3, { crewEvents: true, difficulty: "cadet" });
+    room.tick(SHARED_LAUNCH_MS - 1);
+    expect(room.flight.t).toBe(0);
+    expect(room.snapshot()?.prelaunch?.countdown).toBe(1);
+    room.tick(1);
+    for (let i = 0; i < 2000 && !room.flight.pending; i++) room.tick(100);
+    expect(room.flight.pending?.eventId).toBe("crew-aerospace-1");
+    expect(room.snapshot()?.pending?.secondsLeft).toBe(45);
+    room.handle("p2", { t: "decide", option: "calibrate", skill: 1 });
+    expect(net.errors("p2").pop()).toMatch(/Aerospace/);
+    room.paused = true;
+    room.tick(44_999);
+    expect(room.snapshot()?.pending?.secondsLeft).toBe(1);
+    expect(room.flight.decisions).toHaveLength(0);
+    room.tick(1);
+    expect(room.flight.pending).toBeNull();
+    expect(room.flight.decisions[0]).toMatchObject({ eventId: "crew-aerospace-1", option: "defer", timedOut: true });
+    expect(room.flight.log.some((l) => l.text.includes("Response time expired.") && l.text.includes("3%"))).toBe(true);
+    room.handle("p1", { t: "decide", option: "calibrate", skill: 1 });
+    expect(room.flight.decisions).toHaveLength(1);
+  });
+
   it("AI crew build, the controller launches, the server flies it and pays out", () => {
     const { net, room } = lobby(["controller"]);
     send(room, "p1", { t: "start" });

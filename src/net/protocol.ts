@@ -12,8 +12,8 @@ export const MAX_PLAYERS = 4;
 export type Phase = "lobby" | "hangar" | "flight" | "debrief";
 
 export type ClientMsg =
-  | { t: "create"; name: string; sandbox: boolean }
-  | { t: "join"; code: string; name: string }
+  | { t: "create"; name: string; sandbox: boolean; experience?: number }
+  | { t: "join"; code: string; name: string; experience?: number }
   | { t: "leave" }
   | { t: "role"; role: RoleId | null }
   | { t: "ready"; ready: boolean }
@@ -36,6 +36,7 @@ export interface PlayerView {
   ready: boolean;
   host: boolean;
   connected: boolean;
+  level?: number;
 }
 
 export interface RoomView {
@@ -68,6 +69,7 @@ export interface FlightSnapshot {
   outcome: Outcome | null;
   paused: boolean;
   warp: "auto" | number;
+  prelaunch?: { pollIndex: number; countdown: number | null } | null;
 }
 
 export type ServerMsg =

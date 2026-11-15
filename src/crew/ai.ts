@@ -6,6 +6,7 @@ import { ROLE_BY_ID, roleForEvent, type RoleId } from "./roles";
 
 /** What an AI crew member picks for a pending flight decision, and why. */
 export function aiDecide(pending: PendingDecision, f: Flight): { option: string; line: string } {
+  if (pending.eventId.startsWith("crew-")) return { option: "calibrate", line: "Station check complete. All readings are within limits." };
   const enabled = pending.options.filter((o) => !o.disabled).map((o) => o.id);
   const has = (id: string) => enabled.includes(id);
   const pick = (id: string, why: string) => ({ option: has(id) ? id : enabled[0], line: why });

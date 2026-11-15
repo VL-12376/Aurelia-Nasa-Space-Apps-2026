@@ -4,6 +4,7 @@ import { ROLES, type RoleId } from "../src/crew/roles";
 import { addPart, emptyDesign } from "../src/spacecraft/design";
 import type { ClientMsg, FlightSnapshot, RoomView, ServerMsg } from "../src/net/protocol";
 import { startServer, type RunningServer } from "./index";
+import { SHARED_LAUNCH_MS } from "../src/ui/launchSequence";
 
 /** A real network client: opens a WebSocket to the server and keeps the latest state it was sent. */
 class Client {
@@ -130,6 +131,11 @@ describe("cooperative multiplayer over real WebSockets", () => {
 
     c.send({ t: "launch", craftId: a.room!.game.fleet[0].id });
     await until(() => a.room!.phase === "flight", 5000, "flight");
+    await until(() => !!b.flight?.prelaunch, 5000, "launch poll");
+    expect(b.flight!.t).toBe(0);
+    expect(b.flight!.prelaunch).toEqual({ pollIndex: 0, countdown: null });
+    // Advance the authoritative room clock instead of waiting through the cinematic.
+    server.rooms.get(code)!.tick(SHARED_LAUNCH_MS);
     c.send({ t: "time", mode: 1000 });
     await until(() => !!b.flight && b.flight.telemetry.velKms > 0, 15_000, "telemetry");
 

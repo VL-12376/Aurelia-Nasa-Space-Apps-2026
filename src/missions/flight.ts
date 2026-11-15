@@ -9,9 +9,12 @@ import { kinematics, lightDelaySeconds, sunFactor, type Frame, type Kin, type Ki
 import { phasesFor, planDesign, resolvePlan, type MissionPlan, type ResolvedPlan } from "./plan";
 import type { ReplayInput } from "./replay";
 import type { BurnPhase, Phase, ViewKind } from "./profiles";
+import { CREW_CHECKS, crewDecision, resolveCrewCheck } from "./crewEvents";
 
 /** Everything a flight needs beyond the design and the mission: the player's plan, difficulty and live conditions. */
 export interface FlightContext {
+  /** Guaranteed station checks in addition to the design-dependent anomalies. */
+  crewEvents?: boolean;
   plan?: MissionPlan;
   difficulty?: Difficulty;
   sandbox?: boolean;
@@ -135,6 +138,7 @@ export interface Outcome {
   dvMarginPct: number;
   propellantLeftPct: number;
   fundsEarned: number;
+  funding?: { baseAwardUsd: number; accuracyPct: number; accuracyMultiplier: number; checkPenaltyPct: number };
   reputation: number;
   researchPoints: number;
   experience: number;
@@ -167,24 +171,25 @@ export interface FlightLike {
   decide(optionId: string, skill?: number): void;
 }
 
-/** How long the crew has to react to each kind of trouble, and what the autopilot does if nobody does. */
-export const EVENT_TIMING: Record<string, { timeS: number; fallback: string }> = {
-  "engine-anomaly": { timeS: 12, fallback: "shutdown" },
-  "wind-shear": { timeS: 10, fallback: "press" },
-  "thrust-shortfall": { timeS: 20, fallback: "accept" },
-  "debris-warning": { timeS: 20, fallback: "accept" },
-  "landing-hazard": { timeS: 15, fallback: "land" },
-  "entry-heat": { timeS: 12, fallback: "trust" },
-  "solar-flare": { timeS: 25, fallback: "safe" },
-  "comm-dropout": { timeS: 30, fallback: "wait" },
-  "power-brownout": { timeS: 30, fallback: "shed" },
-  "instrument-fault": { timeS: 30, fallback: "reboot" },
-  "data-full": { timeS: 30, fallback: "prioritise" },
-  "nav-error": { timeS: 40, fallback: "later" },
+/** What the autopilot does when the 45-second response deadline expires. */
+export const EVENT_TIMING: Record<string, { fallback: string }> = {
+  "engine-anomaly": { fallback: "shutdown" },
+  "wind-shear": { fallback: "press" },
+  "thrust-shortfall": { fallback: "accept" },
+  "debris-warning": { fallback: "accept" },
+  "landing-hazard": { fallback: "land" },
+  "entry-heat": { fallback: "trust" },
+  "solar-flare": { fallback: "safe" },
+  "comm-dropout": { fallback: "wait" },
+  "power-brownout": { fallback: "shed" },
+  "instrument-fault": { fallback: "reboot" },
+  "data-full": { fallback: "prioritise" },
+  "nav-error": { fallback: "later" },
 };
 
 /** Option ids that play a mini-game are offered only while the radio delay still allows live control. */
 export const MANUAL_MAX_RTT_S = 20;
+export const RESPONSE_SECONDS = 45;
 
 export function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
@@ -622,7 +627,10 @@ export class Flight {
   private readonly seed: number;
   private readonly input: Design;
   /** Every decision made, in order. With the seed and plan this is enough for a server to replay the flight exactly. */
-  readonly decisions: { eventId: string; option: string; skill?: number }[] = [];
+  readonly decisions: ReplayInput["decisions"] = [];
+  private missedChecks = 0;
+  private responseAccuracy = 0;
+  private responseCount = 0;
 
   constructor(design: Design, mission: MissionDef, seed: number, ctx: FlightContext = {}) {
     this.ctx = ctx;
@@ -670,6 +678,7 @@ export class Flight {
       plan: this.ctx.plan,
       difficulty: this.ctx.difficulty ?? "engineer",
       solarActivity: this.ctx.solarActivity,
+      crewEvents: this.ctx.crewEvents,
       decisions: this.decisions.map((d) => ({ ...d })),
     };
   }
@@ -682,7 +691,7 @@ export class Flight {
     if (!this.pending) return;
     this.say("warn", "No order was given in time. The spacecraft's autonomous protection took the default action.");
     this.lessons.push("When no one can answer in time, the spacecraft acts alone. Autonomous fault protection is built to be safe and simple, not clever, which is why a prepared crew usually does better.");
-    this.decide(this.pending.fallback ?? this.pending.options.find((o) => !o.disabled && !o.manual)!.id);
+    this.decide(this.pending.fallback ?? this.pending.options.find((o) => !o.disabled && !o.manual)!.id, undefined, true);
   }
   /** Round-trip radio time to the spacecraft, seconds: a command and its confirmation each take one light-time. */
   rttS(): number {
@@ -833,6 +842,20 @@ export class Flight {
     for (const def of EVENTS) {
       if (def.applies(p, this) && this.rng() < Math.min(0.95, def.chance(p, this) * (1 + this.stress) * this.diff.eventMult)) this.schedule.push({ def, at: def.at, warned: false });
     }
+    if (this.ctx.crewEvents) {
+      CREW_CHECKS.forEach((check, index) => {
+        const position = ((index + 0.5) / CREW_CHECKS.length) * this.phases.length;
+        if (Math.floor(position) !== this.phaseIdx) return;
+        const def: EventDef = {
+          id: check.id, at: position % 1,
+          applies: () => true, chance: () => 1,
+          precursor: () => `${check.title} is coming up for your station.`,
+          build: () => crewDecision(check),
+          resolve: (option, flight) => resolveCrewCheck(option, flight.skill),
+        };
+        this.schedule.push({ def, at: def.at, warned: false });
+      });
+    }
     this.schedule.sort((a, b) => a.at - b.at);
   }
 
@@ -948,7 +971,9 @@ export class Flight {
     const p = this.phases[this.phaseIdx];
     this.firedEvents.add(def.id);
     const timing = EVENT_TIMING[def.id];
-    this.pending = { ...def.build(p, this), timeS: timing ? Math.max(5, Math.round(timing.timeS * this.diff.timerMult)) : undefined, fallback: timing?.fallback };
+    this.activeEvent = def;
+    const built = def.build(p, this);
+    this.pending = { ...built, timeS: RESPONSE_SECONDS, fallback: timing?.fallback ?? built.fallback };
     const rtt = this.rttS();
     if (rtt > 60) {
       const mins = rtt / 120;
@@ -959,16 +984,26 @@ export class Flight {
   }
 
   /** The player picks an option for the pending decision. */
-  decide(optionId: string, skill?: number): void {
+  private activeEvent: EventDef | null = null;
+
+  decide(optionId: string, skill?: number, timedOut = false): void {
     if (!this.pending || this.status !== "decision") return;
-    const def = EVENTS.find((e) => e.id === this.pending!.eventId)!;
+    const def = this.activeEvent!;
     const opt = this.pending.options.find((o) => o.id === optionId);
     if (!opt || opt.disabled) return;
     this.skillNow = Math.min(1, Math.max(0, Number.isFinite(skill) ? (skill as number) : 0.5));
-    this.decisions.push({ eventId: this.pending.eventId, option: optionId, ...(Number.isFinite(skill) ? { skill: this.skillNow } : {}) });
+    this.decisions.push({ eventId: this.pending.eventId, option: optionId, ...(Number.isFinite(skill) ? { skill: this.skillNow } : {}), ...(timedOut ? { timedOut: true } : {}) });
     const title = this.pending.title;
     const rtt = this.rttS();
     const res = def.resolve(optionId, this, this.rng);
+    if (def.id.startsWith("crew-") && res.tone !== "ok") this.missedChecks++;
+    if (timedOut) {
+      res.text = `Response time expired. ${res.text}`;
+      res.tone = res.fail ? "bad" : "warn";
+    }
+    const accuracy = timedOut || (def.id.startsWith("crew-") && optionId === "defer") ? 0 : opt.manual ? this.skillNow : 1;
+    this.responseAccuracy += accuracy;
+    this.responseCount++;
     this.pending = null;
     this.status = "running";
     this.say(res.tone, `${opt.label}: ${res.text}`);
@@ -1082,7 +1117,11 @@ export class Flight {
     const factor = result === "success" ? 1 : result === "partial" ? 0.4 + 0.4 * (done / total) : 0;
     const sciFactor = applicable ? 0.6 + 0.4 * scienceFrac : 1;
     const bonus = result === "success" && marginPct >= 10 ? 0.05 : 0;
-    const funds = Math.round(m.rewardUsd * (factor * sciFactor + bonus) * lifeFactor);
+    const accuracyPct = this.responseCount ? Math.round(this.responseAccuracy / this.responseCount * 100) : 100;
+    const accuracyMultiplier = 0.5 + accuracyPct / 200;
+    const baseAwardUsd = Math.round(m.rewardUsd * (factor * sciFactor + bonus) * lifeFactor);
+    const checkPenaltyPct = Math.min(100, this.missedChecks * 3);
+    const funds = Math.round(baseAwardUsd * accuracyMultiplier * (1 - checkPenaltyPct / 100));
     const rep = result === "success" ? Math.round(m.reputationReward * (0.8 + 0.2 * scienceFrac)) : result === "partial" ? Math.round(m.reputationReward * 0.4) : -Math.max(3, Math.round(m.reputationReward * 0.4));
     const rp = result === "failed" ? 0 : Math.round(((applicable ? 50 + scienceFrac * 50 : 60) * m.difficulty * 0.6) * (result === "partial" ? 0.6 : 1));
     const xp = result === "success" ? m.difficulty * 20 : result === "partial" ? m.difficulty * 10 : 5;
@@ -1105,6 +1144,7 @@ export class Flight {
       dvDelivered: this.dvDelivered, dvBudget: budget, dvMarginPct: marginPct,
       propellantLeftPct: propTotal ? (propLeft / propTotal) * 100 : 0,
       fundsEarned: funds, reputation: rep, researchPoints: rp, experience: xp,
+      funding: { baseAwardUsd, accuracyPct, accuracyMultiplier, checkPenaltyPct },
       lessons: [...new Set(this.lessons)].slice(0, 8),
       events: this.record,
       resources: {

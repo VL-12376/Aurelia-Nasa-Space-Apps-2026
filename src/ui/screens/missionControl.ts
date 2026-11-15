@@ -1,4 +1,4 @@
-import { h } from "../../core/dom";
+import { h, toast } from "../../core/dom";
 import { router } from "../../core/router";
 import { store } from "../../core/store";
 import { formatUsd } from "../../budget/budget";
@@ -7,7 +7,7 @@ import { canLaunch, ROLE_BY_ID, ROLES, type RoleChoice, type RoleId } from "../.
 import type { Flight, FlightLike, Telemetry } from "../../missions/flight";
 import { mp } from "../../net/session";
 import { audio } from "../../audio/engine";
-import { firstSentence, speak, stopSpeaking } from "../../audio/voice";
+import { crewLine, speak, stopSpeaking } from "../../audio/voice";
 import { miniGame } from "../minigame";
 import { RemoteFlight } from "../../net/remoteFlight";
 import { chatDock, crewStrip, type CrewRow } from "../crew";
@@ -274,11 +274,12 @@ export function missionControl(): HTMLElement {
     void calloutEl.offsetWidth;
     calloutEl.classList.add("in");
     say(CALLER[c.id], c.title, false);
-    speak(CALLER[c.id], `${c.title}. ${firstSentence(c.text)}`);
+    if (c.id !== "liftoff" || remote) void speak(CALLER[c.id], crewLine(CALLER[c.id], c.id));
     clearTimeout(calloutTimer);
     calloutTimer = window.setTimeout(() => (calloutEl.hidden = true), 9000);
   }
   function updateHud(t: Telemetry): void {
+    if (remote) updateSharedPrelaunch();
     audio.setThrust(f.status === "running" && t.burning ? 0.35 + Math.min(0.65, t.thrustKn / 6000) : 0);
     const stagesLeft = t.fuel.filter((x) => x.active).length;
     if (lastStages >= 0 && stagesLeft < lastStages) audio.sfx("separation");
@@ -312,7 +313,7 @@ export function missionControl(): HTMLElement {
     prevVel = t.velKms;
     rDist.el.querySelector(".mc-rl")!.textContent = climbing ? "DYNAMIC PRESSURE" : "DIST EARTH";
     rDelay.el.querySelector(".mc-rl")!.textContent = climbing ? "G-LOAD" : "LINK DELAY";
-    for (const c of tracker({ view: t.view, burning: t.burning && !hold, altKm: t.altKm, velKms: t.velKms, stagesActive: stagesLeft })) showCallout(c);
+    for (const c of tracker({ view: t.view, burning: t.burning && !hold && !mp.flight?.prelaunch, altKm: t.altKm, velKms: t.velKms, stagesActive: stagesLeft })) showCallout(c);
 
     t.fuel.forEach((fu, i) => {
       const b = stageBars[i];
@@ -345,6 +346,10 @@ export function missionControl(): HTMLElement {
     }
     const logN = remote && mp.flight ? mp.flight.logLength : f.log.length;
     if (logN !== lastLog) {
+      if (lastLog >= 0) {
+        const expired = logN > lastLog ? f.log.slice(-(logN - lastLog)).find((l) => l.text.includes("Response time expired.")) : undefined;
+        if (expired) toast(expired.text);
+      }
       lastLog = logN;
       logEl.replaceChildren(...f.log.slice(-7).map((l) => h("li", { class: l.tone }, h("span", { class: "mono muted" }, fmtMet(l.t).replace("T+ ", "")), h("span", null, l.text))));
     }
@@ -363,11 +368,11 @@ export function missionControl(): HTMLElement {
     crew.update(rows);
   }
 
-  function say(role: RoleId, line: string, spoken = true): void {
+  function say(role: RoleId, line: string, spoken = true): Promise<void> {
     crewLines.set(role, line);
     speaker = role;
     speakerUntil = performance.now() + 6000;
-    if (spoken) speak(role, line);
+    return spoken ? speak(role, line) : Promise.resolve();
   }
 
   /* ----- decisions and ending ----- */
@@ -375,21 +380,30 @@ export function missionControl(): HTMLElement {
   let aiTimer = 0;
   let countdown: HTMLElement | null = null;
   let decisionTimer = 0;
+  let activeMiniGame: { stop(): void } | null = null;
   function stopDecisionTimer(): void {
     clearInterval(decisionTimer);
     decisionTimer = 0;
+    activeMiniGame?.stop();
+    activeMiniGame = null;
   }
   function showDecision(): void {
     const p = f.pending;
     if (!p) return;
     const id = `${p.eventId}@${f.t}`;
     const owner: RoleId = remote ? (p.owner as RoleId) : ownerOf(p);
-    if (countdown && p.secondsLeft !== undefined) countdown.textContent = `${Math.max(0, Math.ceil(p.secondsLeft))} s`;
+    if (countdown && p.secondsLeft !== undefined) {
+      countdown.textContent = `${Math.max(0, Math.ceil(p.secondsLeft))} s`;
+      decision.querySelector(".mc-timer")?.classList.toggle("urgent", p.secondsLeft < 5);
+      const fill = decision.querySelector<HTMLElement>(".mc-timer .bar > span");
+      if (fill) fill.style.width = `${Math.max(0, Math.min(100, p.secondsLeft / 45 * 100))}%`;
+    }
     if (id === shownDecision) return;
     shownDecision = id;
     stopDecisionTimer();
     audio.sfx("alert");
-    const mine = remote ? myRole === owner : myRole === "all" || myRole === owner;
+    const mine = remote ? myRole === owner : myRole === null || myRole === "all" || myRole === owner;
+    say(owner, crewLine(owner, "check"));
     decision.hidden = false;
     if (!mine) {
       const def = ROLE_BY_ID[owner];
@@ -400,7 +414,7 @@ export function missionControl(): HTMLElement {
           "div",
           { class: "mc-modal waiting", role: "status", style: { "--rc": def.color } as unknown as Record<string, string> },
           h("div", { class: "mc-modal-tag mono" }, "MISSION CONTROL · TIME PAUSED"),
-          h("div", { class: "wait-head" }, h("span", { class: "ai-image-thumb" }, h("img", { src: def.portrait, alt: "" })), h("div", null, h("h2", null, p.title), h("p", { class: "muted" }, `${who} owns this call.`, remote ? " Auto-decides in " : "", remote ? countdown : ""))),
+          h("div", { class: "wait-head" }, h("span", { class: "ai-image-thumb" }, h("img", { src: def.portrait, alt: "" })), h("div", null, h("h2", null, p.title), h("p", { class: "muted" }, `${who} owns this call.`, remote ? p.ownerIsAi ? " AI responds in " : " Response due in " : "", remote ? countdown : ""))),
           h("p", null, p.body),
           h("div", { class: "mc-options ro" }, ...p.options.map((o) => h("div", { class: "mc-opt ro" }, h("strong", null, o.label), h("span", { class: "muted small" }, o.disabled ?? o.hint)))),
         ),
@@ -410,8 +424,9 @@ export function missionControl(): HTMLElement {
         aiTimer = window.setTimeout(() => {
           if (fl.pending?.eventId !== p.eventId) return;
           const pick = aiDecide(fl.pending, fl);
-          say(owner, pick.line);
-          fl.decide(pick.option);
+          void say(owner, pick.line, false);
+          void speak(owner, crewLine(owner, "action"));
+          fl.decide(pick.option, p.eventId.startsWith("crew-") ? 1 : undefined);
           decision.hidden = true;
           shownDecision = "";
           updateHud(f.telemetry());
@@ -419,17 +434,32 @@ export function missionControl(): HTMLElement {
       }
       return;
     }
-    const total = (p.timeS ?? 30) * (reduced ? 2 : 1);
+    const total = 45;
     const secs = h("span", { class: "mono" }, remote ? `${Math.ceil(p.secondsLeft ?? total)} s` : `${total} s`);
     const fillEl = h("span", { style: { width: "100%" } });
-    const timerEl = h("div", { class: "mc-timer", role: "timer" }, h("span", { class: "mono small" }, remote ? "THE CREW AUTO-DECIDES IN " : "RESPOND IN "), secs, remote ? null : h("div", { class: "bar" }, fillEl));
+    const timerEl = h("div", { class: "mc-timer", role: "timer", "aria-label": "Response time remaining" }, h("span", { class: "mono small" }, "RESPOND IN "), secs, h("div", { class: "bar" }, fillEl));
     countdown = remote ? secs : null;
     let mg: { stop(): void } | null = null;
+    const deadline = performance.now() + total * 1000;
     const modal = h("div", { class: "mc-modal", role: "dialog", "aria-modal": "true", "aria-label": p.title });
+    const expire = () => {
+      stopDecisionTimer();
+      mg?.stop();
+      const fl = f as Flight;
+      if (fl.pending?.eventId !== p.eventId) return;
+      audio.sfx("error");
+      void say(owner, crewLine(owner, "timeout"));
+      fl.decideTimeout();
+      decision.hidden = true;
+      shownDecision = "";
+      updateHud(f.telemetry());
+    };
     const settle = (optId: string, skill?: number) => {
+      if (!remote && performance.now() >= deadline) { expire(); return; }
       stopDecisionTimer();
       mg?.stop();
       f.decide(optId, skill);
+      if (skill !== undefined && skill >= 0.5) void say(owner, crewLine(owner, "complete"));
       decision.hidden = true;
       if (!remote) shownDecision = "";
       updateHud(f.telemetry());
@@ -437,7 +467,7 @@ export function missionControl(): HTMLElement {
     const showOptions = () =>
       modal.replaceChildren(
         timerEl,
-        h("div", { class: "mc-modal-tag mono" }, "MISSION CONTROL · TIME PAUSED"),
+        h("div", { class: "mc-modal-tag mono" }, `${ROLE_BY_ID[owner].name.toUpperCase()} · ${ROLE_BY_ID[owner].title.toUpperCase()}`),
         h("h2", null, p.title),
         h("p", null, p.body),
         h(
@@ -451,9 +481,11 @@ export function missionControl(): HTMLElement {
                 disabled: !!o.disabled,
                 title: o.disabled ?? o.hint,
                 onclick: () => {
+                  if (!remote && performance.now() >= deadline) { expire(); return; }
                   if (!o.manual) return settle(o.id);
                   const game = miniGame({ title: o.label, hint: o.manual, onDone: (score) => settle(o.id, score) });
                   mg = game;
+                  activeMiniGame = game;
                   modal.replaceChildren(timerEl, game.el);
                 },
               },
@@ -469,23 +501,13 @@ export function missionControl(): HTMLElement {
 
     if (!remote) {
       // Real controllers have seconds, not minutes. If nobody answers, the spacecraft's autonomy takes the default action.
-      const deadline = performance.now() + total * 1000;
       decisionTimer = window.setInterval(() => {
         const left = (deadline - performance.now()) / 1000;
         secs.textContent = `${Math.max(0, Math.ceil(left))} s`;
         fillEl.style.width = `${Math.max(0, (left / total) * 100)}%`;
         timerEl.classList.toggle("urgent", left < 5);
         if (left > 0) return;
-        stopDecisionTimer();
-        mg?.stop();
-        const fl = f as Flight;
-        if (fl.pending?.eventId !== p.eventId) return;
-        audio.sfx("error");
-        say(owner, "No answer in time. Autopilot is taking the default action.");
-        fl.decideTimeout();
-        decision.hidden = true;
-        shownDecision = "";
-        updateHud(f.telemetry());
+        expire();
       }, 100);
     }
   }
@@ -512,6 +534,7 @@ export function missionControl(): HTMLElement {
         h("h2", null, o.headline),
         o.failReason ? h("p", { class: "bad" }, o.failReason) : h("p", null, `${o.objectives.filter((x) => x.done).length} of ${o.objectives.length} objectives completed.`),
         h("p", { class: "mono" }, `${o.fundsEarned > 0 ? `+${formatUsd(o.fundsEarned)} funding` : "No funding earned"} · reputation ${o.reputation >= 0 ? "+" : ""}${o.reputation}`),
+        o.funding ? h("p", { class: "muted" }, `${o.funding.accuracyPct}% response accuracy · funding multiplier ${o.funding.accuracyMultiplier.toFixed(2)} · ${o.funding.checkPenaltyPct}% missed-check penalty`) : null,
         h("button", { class: "btn", onclick: () => router.navigate("debrief") }, "Open debrief"),
       ),
     );
@@ -519,13 +542,15 @@ export function missionControl(): HTMLElement {
 
   /* ----- pre-launch: poll and countdown (single player; in a shared room the server runs the flight) ----- */
   let hold = !remote && f.status === "running" && f.t < 5 && f.telemetry().view === "ascent";
+  let disposed = false;
   const preTimers: number[] = [];
   let igniting = false;
-  const later = (ms: number, fn: () => void) => preTimers.push(window.setTimeout(fn, reduced ? Math.min(ms, 250) : ms));
+  const later = (ms: number, fn: () => void) => preTimers.push(window.setTimeout(() => { if (!disposed && hold) fn(); }, ms));
   const station: RoleId = myRole === "all" || myRole === null ? "controller" : myRole;
 
-  function releaseHold(): void {
+  function releaseHold(skip = false): void {
     preTimers.forEach(clearTimeout);
+    if (skip) stopSpeaking();
     pre.hidden = true;
     hold = false;
     audio.sfx("launch");
@@ -539,9 +564,7 @@ export function missionControl(): HTMLElement {
         h("p", { class: "muted small" }, n > 3 ? "The count is automatic now. Computers watch thousands of readings and can stop it on their own." : n > 0 ? "Main engines start before liftoff so their thrust can be checked while the rocket is still held down." : ""),
       );
       if (n > 0 && n <= 5) audio.sfx("countdown");
-      if (n === COUNTDOWN_FROM) speak("controller", "T minus ten");
-      else if (n > 0 && n <= 5) speak("controller", String(n));
-      else if (n === 0) speak("controller", "Liftoff!");
+      void speak("controller", crewLine("controller", n > 0 ? `count-${n}` : "liftoff"));
       if (n === 3) {
         igniting = true;
         audio.sfx("ignite");
@@ -552,7 +575,10 @@ export function missionControl(): HTMLElement {
       }
       later(1000, () => tick(n - 1));
     };
-    tick(COUNTDOWN_FROM);
+    pre.replaceChildren(h("div", { class: "mc-pre-tag mono" }, "TERMINAL COUNT"), h("p", null, crewLine("controller", "count-intro")));
+    void speak("controller", crewLine("controller", "count-intro")).then(() => {
+      if (!disposed && hold) tick(COUNTDOWN_FROM);
+    });
   }
 
   function runPoll(i: number, answered: boolean[]): void {
@@ -565,26 +591,59 @@ export function missionControl(): HTMLElement {
           ? h(
               "div",
               { class: "mc-pre-act" },
-              h("button", { class: "btn", onclick: () => { answered[k] = true; say(c.role, c.line); audio.sfx("confirm"); runPoll(i + 1, answered); } }, "Call GO"),
+              h("button", { class: "btn", onclick: async (e: Event) => {
+                if (answered[k]) return;
+                answered[k] = true;
+                (e.currentTarget as HTMLButtonElement).disabled = true;
+                audio.sfx("confirm");
+                await say(c.role, c.line);
+                if (!disposed && hold) runPoll(i + 1, answered);
+              } }, "Call GO"),
               h("button", { class: "btn ghost", onclick: () => { holdNote.hidden = false; audio.sfx("alert"); } }, "Call NO-GO"),
             )
           : null;
       return h("li", { class: state }, h("div", { class: "mc-pre-row" }, h("strong", null, c.station), h("span", { class: "muted small" }, answered[k] ? c.line : k === i ? (mine ? "Your station. What is your call?" : "Checking…") : ""), status), k === i || answered[k] ? h("small", { class: "muted" }, c.why) : null, action);
     });
     const holdNote = h("p", { class: "mc-pre-hold small", hidden: true }, "Hold called. Real countdowns have planned holds so teams can fix a problem calmly. Here nothing is wrong, so call GO when you are ready.");
-    pre.replaceChildren(h("div", { class: "mc-pre-tag mono" }, "LAUNCH POLL · EVERY STATION MUST CALL GO"), h("ol", { class: "mc-pre-list" }, ...rows), holdNote, h("button", { class: "btn ghost mc-pre-skip", onclick: () => { audio.sfx("click"); releaseHold(); } }, "Skip to launch"));
+    pre.replaceChildren(h("div", { class: "mc-pre-tag mono" }, "LAUNCH POLL · EVERY STATION MUST CALL GO"), h("ol", { class: "mc-pre-list" }, ...rows), holdNote, h("button", { class: "btn ghost mc-pre-skip", onclick: () => { audio.sfx("click"); releaseHold(true); } }, "Skip to launch"));
     if (i >= LAUNCH_POLL.length) {
       later(700, runCountdown);
       return;
     }
     const c = LAUNCH_POLL[i];
     if (c.role !== station) {
-      later(1500, () => {
+      later(1500, async () => {
         answered[i] = true;
-        say(c.role, c.line);
         audio.sfx("confirm");
-        runPoll(i + 1, answered);
+        await say(c.role, c.line);
+        if (!disposed && hold) runPoll(i + 1, answered);
       });
+    }
+  }
+
+  let sharedPreKey = "";
+  function updateSharedPrelaunch(): void {
+    const stage = mp.flight?.prelaunch;
+    if (!stage) {
+      pre.hidden = true;
+      return;
+    }
+    pre.hidden = false;
+    const key = `${stage.pollIndex}:${stage.countdown}`;
+    if (key === sharedPreKey) return;
+    sharedPreKey = key;
+    const call = LAUNCH_POLL[stage.pollIndex];
+    if (call) {
+      pre.replaceChildren(h("div", { class: "mc-pre-tag mono" }, "CREW LAUNCH POLL"), h("h2", null, ROLE_BY_ID[call.role].name), h("p", null, call.line), h("p", { class: "muted small" }, call.why));
+      void say(call.role, call.line);
+    } else if (stage.countdown === null) {
+      pre.replaceChildren(h("div", { class: "mc-pre-tag mono" }, "TERMINAL COUNT"), h("p", null, crewLine("controller", "count-intro")));
+      void say("controller", crewLine("controller", "count-intro"));
+    } else {
+      pre.replaceChildren(h("div", { class: "mc-pre-tag mono" }, "TERMINAL COUNT"), h("div", { class: "mc-pre-clock mono" }, `T−${String(stage.countdown).padStart(2, "0")}`));
+      void speak("controller", crewLine("controller", `count-${stage.countdown}`));
+      if (stage.countdown <= 5) audio.sfx("countdown");
+      if (stage.countdown === 3) audio.sfx("ignite");
     }
   }
 
@@ -609,7 +668,10 @@ export function missionControl(): HTMLElement {
     }
     const raw = f.telemetry();
     // Engines light a few seconds before release: the scene shows the flame, but the rocket is still held down.
-    const t = hold ? { ...raw, burning: igniting, thrustKn: igniting ? raw.thrustKn : 0 } : raw;
+    const sharedHold = remote && mp.flight?.prelaunch;
+    const sharedIgnition = sharedHold && sharedHold.countdown !== null && sharedHold.countdown <= 3;
+    const t = hold || sharedHold ? { ...raw, burning: !!(igniting || sharedIgnition), thrustKn: igniting || sharedIgnition ? raw.thrustKn : 0 } : raw;
+    scene.update(t, f.activeTargets());
     if (tick++ % 6 === 0) updateHud(t);
     if (f.status === "decision") showDecision();
     else if (!decision.hidden) {
@@ -624,9 +686,10 @@ export function missionControl(): HTMLElement {
     }
   };
   updateHud(f.telemetry());
-  if (!hold && f.t < 5) audio.sfx("launch");
+  if (!hold && !mp.flight?.prelaunch && f.t < 5) audio.sfx("launch");
   raf = requestAnimationFrame(frame);
   router.onLeave(() => {
+    disposed = true;
     cancelAnimationFrame(raf);
     clearTimeout(endTimer);
     clearTimeout(aiTimer);

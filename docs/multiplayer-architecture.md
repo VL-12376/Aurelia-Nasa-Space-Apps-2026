@@ -26,8 +26,10 @@ The server owns every rule. Clients never decide an outcome.
 | Build | Aerospace Engineer only; funds and budget checked on the server. |
 | Mission and launch | Mission Controller only; the pre-flight gate runs on the server. |
 | Time rate | Mission Controller only, warp clamped to 1 to 1000. |
-| Decisions | Only the role that owns the event. If nobody answers in 45 s (2.5 s for AI roles), the AI crew decides. |
-| Outcome | Applied once, on the server, to the shared campaign. |
+| Launch poll and countdown | The server holds the flight for four 5-second station polls, a 3-second count introduction and a 10-second countdown. Snapshots identify the current stage; clients play the correct character's original recording. |
+| Decisions | Only the role that owns the event. Each character has two guaranteed station checks plus applicable anomalies. Human deadlines are exactly 45 s, including mini-games and while simulation time is paused. On expiry, spacecraft autonomy applies the default action and records consequences; AI-owned stations decide after 2.5 s. |
+| Outcome and budget | Applied once, on the server, to the shared campaign. Build/operations spending reduces the balance; accuracy-based mission funding increases it and replenishes category allocations. Clients see the same updated budget. |
+| Player levels | Personal XP is separate from room seasons and does not restrict joining. Clients save their mission XP and promotion badges locally, deduplicate rewards across reconnections and show awards at Headquarters. Joining clients supply their existing XP for advisory lobby level labels; it does not affect permissions, campaign unlocks or verified scores. |
 
 ## Roles
 
@@ -51,4 +53,5 @@ Other players open the game and type the host machine's address in the Server ad
 
 - Rooms live in memory. Restarting the server ends them.
 - There is no account system; a player is a connection and a display name.
-- A reconnecting player cannot reclaim their seat yet.
+- Dropped connections can reclaim their seat with the server-issued token. Unclaimed or disconnected stations are covered by AI.
+- Personal levels are device-local, not an account-backed or server-verified progression system.

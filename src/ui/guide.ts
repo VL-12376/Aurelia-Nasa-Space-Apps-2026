@@ -20,7 +20,7 @@ export function guideBanner(g: GameState | null, active: ScreenId): HTMLElement 
     "div",
     { class: "guide", role: "region", "aria-label": "Next step" },
     h("div", { class: "guide-row" },
-      h("span", { class: "guide-tag mono" }, `NEXT STEP · LEVEL ${step.cml}`),
+      h("span", { class: "guide-tag mono" }, `NEXT STEP · CONCEPT STAGE ${step.cml}`),
       h("strong", null, step.title),
       h("span", { class: "guide-why" }, step.why),
       toggle,

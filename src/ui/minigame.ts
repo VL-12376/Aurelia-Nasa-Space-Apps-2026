@@ -9,7 +9,7 @@ export interface MiniGameOptions {
 
 /**
  * A short timing challenge: stop the sweeping marker inside the green band, three times. Players who
- * cannot or would rather not play can take an average result with the skip button.
+ * cannot or would rather not play can abandon the check, accepting a poor result.
  */
 export function miniGame(o: MiniGameOptions): { el: HTMLElement; stop(): void } {
   let round = 0;
@@ -83,7 +83,7 @@ export function miniGame(o: MiniGameOptions): { el: HTMLElement; stop(): void } 
       "div",
       { class: "mg-actions" },
       h("button", { class: "btn", onclick: press }, "NOW  (Space)"),
-      h("button", { class: "btn ghost small", title: "Use an average result instead of playing", onclick: () => finish(0.5) }, "Skip: average result"),
+      h("button", { class: "btn ghost small", title: "Abandon manual control and accept the consequences of a failed check", onclick: () => finish(0) }, "Abandon check"),
     ),
   );
   return {

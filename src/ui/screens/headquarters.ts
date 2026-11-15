@@ -1,7 +1,7 @@
 import { h } from "../../core/dom";
 import { router } from "../../core/router";
 import { store } from "../../core/store";
-import { BUDGET_CATEGORIES, formatUsd } from "../../budget/budget";
+import { BUDGET_CATEGORIES, formatUsd, formatUsdExact } from "../../budget/budget";
 import { SEASONS } from "../../campaign/seasons";
 import { reputationTier, seasonProgress } from "../../campaign/reputation";
 import { ROLES } from "../../crew/roles";
@@ -14,6 +14,9 @@ import { session } from "../session";
 import { avatar } from "../crew";
 import { countUp } from "../fx";
 import { historyCard, liveSpaceCard } from "../liveCard";
+import { mp } from "../../net/session";
+import { levelProgress } from "../../core/progression";
+import { openDialog } from "../dialog";
 
 const FACTS = [
   "LOW EARTH ORBIT SPEED ≈ 7.8 km/s",
@@ -97,23 +100,24 @@ function donut(planned: number[], centerTop: string, centerBottom: string): SVGE
 const fmtDv = (v: number) => `${(v / 1000).toFixed(1)} km/s`;
 
 export function headquarters(): HTMLElement {
-  const game = store.get().game;
+  const game = mp.active ? mp.room?.game : store.get().game;
   if (!game) {
     return gameShell("hq", h("div", { class: "notice" }, "No active game. Start a new campaign from the main menu."));
   }
 
-  const season = SEASONS.find((s) => s.id === game.season) ?? SEASONS[0];
-  const seasonMissions = MISSIONS.filter((m) => m.season === game.season);
-  const seasonDone = game.completedMissions.filter((id) => seasonMissions.some((m) => m.id === id)).length;
-  const seasonPct = seasonProgress(seasonMissions.map((m) => m.id), game.completedMissions) * 100;
-  const available = missionsForSeason(game.season).filter((m) => !game.completedMissions.includes(m.id));
-  const tier = reputationTier(game.reputation);
-  const spentTotal = BUDGET_CATEGORIES.reduce((sum, c) => sum + game.allocation[c.id].spent, 0);
-  const repPct = tier.next ? ((game.reputation - tier.min) / (tier.next - tier.min)) * 100 : 100;
-  const seasonTechs = TECHS.filter((t) => t.season <= game.season);
-  const nextTechs = seasonTechs.filter((t) => !game.researchedTech.includes(t.id) && t.requires.every((r) => game.researchedTech.includes(r))).slice(0, 4);
-  const last = game.lastFlight;
-  const lastMission = last ? MISSIONS.find((m) => m.id === last.missionId) : undefined;
+  const progress = levelProgress(store.get().player.experience);
+  const rewards = store.get().player.pendingRewards;
+  if (rewards.length) {
+    requestAnimationFrame(() => {
+      const dialog = openDialog({
+        title: rewards.some((r) => r.awards.some((a) => a.includes("promotion"))) ? `Promotion! You are level ${progress.level}` : "Welcome back to headquarters",
+        body: h("div", null, ...rewards.map((r) => h("section", null, h("h4", null, r.title), h("p", null, `+${r.experience} player XP`), r.fundsEarned !== undefined ? h("p", { class: "ok" }, `${formatUsdExact(r.fundsEarned)} credited to the agency budget`) : null, ...r.awards.map((a) => h("p", { class: "ok" }, a)))), h("p", { class: "muted" }, `${progress.nextAt - store.get().player.experience} XP to level ${progress.level + 1}. Campaign seasons unlock separately by completing their missions.`)),
+        actions: [{ label: "Collect awards", kind: "primary", default: true, onClick: () => undefined }],
+        onClose: () => store.dismissRewards(),
+      });
+      router.onLeave(() => dialog.close());
+    });
+  }
 
   // The globe is built once so re-rendering the panels does not restart the WebGL scene.
   const globeHost = h("div", { class: "hq3-globe" });
@@ -143,6 +147,21 @@ export function headquarters(): HTMLElement {
   };
 
   const render = () => {
+    const current = mp.active ? mp.room?.game : store.get().game;
+    if (!current) return;
+    const game = current;
+    const season = SEASONS.find((s) => s.id === game.season) ?? SEASONS[0];
+    const seasonMissions = MISSIONS.filter((m) => m.season === game.season);
+    const seasonDone = game.completedMissions.filter((id) => seasonMissions.some((m) => m.id === id)).length;
+    const seasonPct = seasonProgress(seasonMissions.map((m) => m.id), game.completedMissions) * 100;
+    const available = missionsForSeason(game.season).filter((m) => !game.completedMissions.includes(m.id));
+    const tier = reputationTier(game.reputation);
+    const spentTotal = BUDGET_CATEGORIES.reduce((sum, c) => sum + game.allocation[c.id].spent, 0);
+    const repPct = tier.next ? ((game.reputation - tier.min) / (tier.next - tier.min)) * 100 : 100;
+    const seasonTechs = TECHS.filter((t) => t.season <= game.season);
+    const nextTechs = seasonTechs.filter((t) => !game.researchedTech.includes(t.id) && t.requires.every((r) => game.researchedTech.includes(r))).slice(0, 4);
+    const last = game.lastFlight;
+    const lastMission = last ? MISSIONS.find((m) => m.id === last.missionId) : undefined;
     widget.setCraft(Math.max(1, Math.min(8, game.fleet.length + game.flights)));
 
     headline.replaceChildren(
@@ -195,16 +214,26 @@ export function headquarters(): HTMLElement {
     );
 
     /* ----- right: agency ----- */
-    const planned = BUDGET_CATEGORIES.map((c) => game.allocation[c.id].planned);
+    const remaining = BUDGET_CATEGORIES.map((c) => game.allocation[c.id].planned - game.allocation[c.id].spent);
     right.replaceChildren(
       card(
-        "Annual budget",
+        `Player level ${progress.level}`,
+        bar((progress.current / progress.required) * 100, "Player XP to next level"),
+        h("p", { class: "mono small" }, `${store.get().player.experience} XP total · ${progress.nextAt - store.get().player.experience} XP to level ${progress.level + 1}`),
+        h("p", { class: "muted small" }, "Earn XP from missions. Each player level awards a promotion badge; campaign seasons unlock when every mission in the season is complete."),
+      ),
+      card(
+        "Agency budget",
         h(
           "div",
           { class: "hq3-budget" },
-          donut(planned, formatUsd(game.annualBudget), "ANNUAL"),
-          h("ul", { class: "legend" }, ...BUDGET_CATEGORIES.map((c, i) => h("li", null, h("span", { class: "swatch", style: { background: DONUT_COLORS[i % DONUT_COLORS.length] } }), h("span", { class: "lg-name" }, c.label), h("span", { class: "mono" }, formatUsd(planned[i]))))),
+          donut(remaining.map((v) => Math.max(0, v)), formatUsd(game.funds), "AVAILABLE"),
+          h("ul", { class: "legend" }, ...BUDGET_CATEGORIES.map((c, i) => h("li", null, h("span", { class: "swatch", style: { background: DONUT_COLORS[i % DONUT_COLORS.length] } }), h("span", { class: "lg-name" }, c.label), h("span", { class: `mono${remaining[i] < 0 ? " warn" : ""}` }, formatUsd(remaining[i]))))),
         ),
+        h("p", { class: "mono small" }, `Available: ${formatUsdExact(game.funds)}`),
+        h("p", { class: "mono small" }, `Spent: ${formatUsdExact(spentTotal)}`),
+        h("p", { class: "mono small ok" }, `Mission funding added: ${formatUsdExact(game.fundingEarned)}`),
+        h("p", { class: "muted small" }, `Starting annual allocation: ${formatUsd(game.annualBudget)}. Builds and operations spend from this balance; mission funding is reinvested across the categories.`),
       ),
       card(
         "Reputation",
@@ -217,19 +246,20 @@ export function headquarters(): HTMLElement {
         "Technology",
         h("h5", null, "Ready to research"),
         nextTechs.length ? h("ul", { class: "hq3-list" }, ...nextTechs.map((t) => h("li", { class: "hq3-row" }, h("span", null, t.name), h("span", { class: game.researchPoints >= t.cost ? "tag" : "tag warn" }, `${t.cost} RP`)))) : h("p", { class: "muted small" }, "Nothing available right now."),
-        h("button", { class: "btn ghost small", onclick: () => router.navigate("research") }, "Open research"),
+        h("button", { class: "btn ghost small", disabled: mp.active, title: mp.active ? "Research is not editable in a shared room" : undefined, onclick: () => router.navigate("research") }, "Open research"),
       ),
     );
 
     /* ----- bottom of the globe: crew and shortcuts ----- */
-    const mine = game.role;
+    const mine = mp.active ? mp.role : game.role;
     bottom.replaceChildren(
       h(
         "div",
         { class: "hq3-crew", "aria-label": "Crew" },
         ...ROLES.map((r) => {
           const me = mine === null || mine === "all" || mine === r.id;
-          return h("div", { class: `hq3-face${me ? " me" : ""}`, style: { "--rc": r.color }, title: `${r.name}, ${r.title}` }, avatar(r, me), h("span", { class: "mono" }, me ? "YOU" : "AI"));
+          const holder = mp.room?.players.find((p) => p.role === r.id);
+          return h("div", { class: `hq3-face${me ? " me" : ""}`, style: { "--rc": r.color }, title: `${r.name}, ${r.title}` }, avatar(r, me), h("span", { class: "mono" }, me ? "YOU" : holder?.name ?? "AI"));
         }),
       ),
       h(
@@ -242,6 +272,15 @@ export function headquarters(): HTMLElement {
     );
   };
   render();
+  if (mp.active) {
+    let lastGame = mp.room?.game;
+    const off = mp.subscribe(() => {
+      if (mp.room?.game === lastGame) return;
+      lastGame = mp.room?.game;
+      render();
+    });
+    router.onLeave(off);
+  }
 
   const centre = h(
     "section",

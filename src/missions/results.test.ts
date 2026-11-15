@@ -3,6 +3,7 @@ import { newGameState } from "../core/gameState";
 import { MISSIONS } from "./missions";
 import type { Outcome } from "./flight";
 import { applyOutcome } from "./results";
+import { BUDGET_CATEGORIES, trySpend } from "../budget/budget";
 
 const outcome = (): Outcome => ({
   result: "success",
@@ -22,6 +23,30 @@ const outcome = (): Outcome => ({
 });
 
 describe("applyOutcome scoring", () => {
+  it("credits earned funding to both the balance and category budgets after mission spending", () => {
+    const g = newGameState("single");
+    const before = g.funds;
+    g.funds = trySpend(g.funds, g.allocation, "operations", 200).funds;
+    applyOutcome(g, MISSIONS[0], "Test", 1, outcome(), []);
+    expect(g.funds).toBe(before - 100);
+    expect(g.fundingEarned).toBe(100);
+    const planned = BUDGET_CATEGORIES.reduce((sum, c) => sum + g.allocation[c.id].planned, 0);
+    const spent = BUDGET_CATEGORIES.reduce((sum, c) => sum + g.allocation[c.id].spent, 0);
+    expect(planned - spent).toBe(g.funds);
+    expect(g.allocation.operations.spent).toBe(200);
+  });
+
+  it("awards completing the whole campaign once, including its final season", () => {
+    const g = newGameState("single", 4);
+    g.completedMissions = MISSIONS.slice(0, -1).map((m) => m.id);
+    const last = MISSIONS[MISSIONS.length - 1];
+    applyOutcome(g, last, "Final", 1, outcome(), []);
+    applyOutcome(g, last, "Final", 2, outcome(), []);
+    expect(g.achievements.filter((a) => a === "Season 4 complete")).toHaveLength(1);
+    expect(g.achievements.filter((a) => a === "AURELIA campaign complete")).toHaveLength(1);
+    expect(g.season).toBe(4);
+  });
+
   it("scores the flight and keeps the newest entry first, capped at 50", () => {
     const g = newGameState("single");
     const mission = MISSIONS[0];

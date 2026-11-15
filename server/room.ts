@@ -12,6 +12,8 @@ import { MAX_PLAYERS, type ClientMsg, type FlightSnapshot, type Phase, type Play
 import { TECHS } from "../src/research/tech";
 import { addPart, analyse, emptyDesign, isUnlocked, type BuiltCraft, type Design } from "../src/spacecraft/design";
 import { PART_BY_ID } from "../src/spacecraft/parts";
+import { playerLevel } from "../src/core/progression";
+import { SHARED_LAUNCH_MS, sharedLaunchStage } from "../src/ui/launchSequence";
 
 export interface Transport {
   send(playerId: string, msg: ServerMsg): void;
@@ -25,6 +27,7 @@ interface Player {
   connected: boolean;
   /** Secret that lets this player reclaim their seat after a dropped connection. */
   token: string;
+  experience: number;
 }
 
 const HUMAN_DECISION_MS = 45_000;
@@ -78,6 +81,7 @@ export class Room {
   private flightCraft = "";
   private lastSnapshot: FlightSnapshot | null = null;
   private ended = false;
+  private launchStartedAt = 0;
 
   constructor(readonly code: string, readonly sandbox: boolean, private net: Transport, private scores: ScoreStore | null = null) {
     this.game = newGameState("multiplayer", sandbox ? 4 : 1);
@@ -88,11 +92,12 @@ export class Room {
 
   /* ---------- membership ---------- */
 
-  addPlayer(id: string, name: string, token = ""): string | null {
+  addPlayer(id: string, name: string, token = "", experience = 0): string | null {
     if (this.players.length >= MAX_PLAYERS) return "This room is full (4 players).";
     if (this.phase !== "lobby") return "This mission has already started. Ask the host to set up a new room.";
+    if (typeof experience !== "number" || !Number.isFinite(experience) || experience < 0 || experience > 1e9) return "Invalid player experience.";
     const clean = name.trim().slice(0, 20) || `Player ${this.players.length + 1}`;
-    this.players.push({ id, name: clean, role: null, ready: false, connected: true, token });
+    this.players.push({ id, name: clean, role: null, ready: false, connected: true, token, experience });
     if (!this.hostId) this.hostId = id;
     this.sync();
     return null;
@@ -225,6 +230,9 @@ export class Room {
         if (this.phase !== "flight" || !f?.pending) return;
         const owner = roleForEvent(f.pending.eventId);
         if (p.role !== owner) return err(`That decision belongs to the ${ROLE_BY_ID[owner].title}.`);
+        this.handleDecisionTimer();
+        if (f.pending !== null && this.now >= this.decisionDeadline) return err("The response deadline has expired.");
+        if (!f.pending) return err("The response deadline has expired.");
         const opt = f.pending.options.find((o) => o.id === msg.option);
         if (!opt || opt.disabled) return err("That option is not available.");
         this.say(owner, false, `I'll go with: ${opt.label}.`, p.name);
@@ -337,6 +345,7 @@ export class Room {
     const live = peekSpaceNow()?.weather;
     void spaceNow().catch(() => undefined);
     this.flight = new Flight(design, mission, this.flightSeed, {
+      crewEvents: true,
       difficulty: g.difficulty,
       sandbox: g.sandbox,
       solarActivity: live?.activity,
@@ -346,6 +355,7 @@ export class Room {
     this.paused = false;
     this.decisionKey = "";
     this.ended = false;
+    this.launchStartedAt = this.now;
     this.phase = "flight";
     this.say("controller", false, `Launch. ${mission.name} is go.`, this.human("controller")?.name);
     this.sync();
@@ -360,12 +370,18 @@ export class Room {
     this.abandonedMs = this.players.length > 0 && this.players.every((p) => !p.connected) ? this.abandonedMs + dtMs : 0;
     const f = this.flight;
     if (this.phase !== "flight" || !f) return;
+    if (this.now - this.launchStartedAt < SHARED_LAUNCH_MS) {
+      this.snapshotAcc += dtMs;
+      if (this.snapshotAcc >= SNAPSHOT_MS) this.pushFlight(false);
+      return;
+    }
     if (f.status === "decision") {
       this.handleDecisionTimer();
     } else if (f.status === "running" && !this.paused) {
       const burning = f.telemetry().burning;
       const warp = this.warp === "auto" ? Math.max(1, Math.min(f.chunkSeconds() / (burning ? 6 : 8), 5e7)) : this.warp;
       f.step(Math.min(dtMs / 1000, 0.1) * warp);
+      if (f.pending) this.handleDecisionTimer();
     }
     this.afterStep();
     this.snapshotAcc += dtMs;
@@ -381,16 +397,21 @@ export class Room {
     if (key !== this.decisionKey) {
       this.decisionKey = key;
       const human = this.liveHuman(owner);
-      this.decisionDeadline = this.now + (human ? Math.max(HUMAN_DECISION_MS * 0.6, (pending.timeS ?? 30) * 2000) : AI_DECISION_MS);
+      this.decisionDeadline = this.now + (human ? HUMAN_DECISION_MS : AI_DECISION_MS);
       this.say(owner, !human, human ? `${pending.title}. ${human.name}, this one is yours.` : `${pending.title}. I've got this one.`, human?.name);
       this.pushFlight(true);
       return;
     }
     if (this.now >= this.decisionDeadline) {
-      const r = aiDecide(pending, f);
       const human = this.liveHuman(owner);
-      this.say(owner, true, human ? `${crewName(owner)} is covering for ${human.name}, who did not answer in time. ${r.line}` : r.line);
-      f.decide(r.option);
+      if (human) {
+        this.say(owner, false, "Response time expired. Autonomous protection is taking the default action; review the mission log for consequences.", human.name);
+        f.decideTimeout();
+      } else {
+        const r = aiDecide(pending, f);
+        this.say(owner, true, r.line);
+        f.decide(r.option, pending.eventId.startsWith("crew-") ? 1 : undefined);
+      }
       this.afterStep();
     }
   }
@@ -402,6 +423,7 @@ export class Room {
       this.ended = true;
       const mission = MISSIONS.find((m) => m.id === this.missionId)!;
       applyOutcome(this.game, mission, this.flightCraft, this.flightSeed, f.outcome, f.log);
+      if (!this.sandbox) for (const player of this.players) player.experience += f.outcome.experience;
       this.recordScore(mission.id, f.outcome);
       this.pushFlight(true);
       this.phase = "debrief";
@@ -425,7 +447,7 @@ export class Room {
       code: this.code,
       phase: this.phase,
       sandbox: this.sandbox,
-      players: this.players.map<PlayerView>((p) => ({ id: p.id, name: p.name, role: p.role, ready: p.ready, host: p.id === this.hostId, connected: p.connected })),
+      players: this.players.map<PlayerView>((p) => ({ id: p.id, name: p.name, role: p.role, ready: p.ready, host: p.id === this.hostId, connected: p.connected, level: playerLevel(p.experience) })),
       aiRoles: this.aiRoles(),
       missionId: this.missionId,
       design: this.design,
@@ -450,7 +472,7 @@ export class Room {
       missionId: f.mission.id,
       design: f.design,
       telemetry: f.telemetry(),
-      pending: pending && owner ? { ...pending, owner, ownerIsAi: !this.liveHuman(owner), secondsLeft: Math.max(0, Math.round((this.decisionDeadline - this.now) / 1000)) } : null,
+      pending: pending && owner ? { ...pending, owner, ownerIsAi: !this.liveHuman(owner), secondsLeft: Math.max(0, Math.ceil((this.decisionDeadline - this.now) / 1000)) } : null,
       log: f.log.slice(-14),
       logLength: f.log.length,
       timeline: f.timeline(),
@@ -460,6 +482,7 @@ export class Room {
       outcome: f.outcome,
       paused: this.paused,
       warp: this.warp,
+      prelaunch: sharedLaunchStage(this.now - this.launchStartedAt),
     };
   }
 

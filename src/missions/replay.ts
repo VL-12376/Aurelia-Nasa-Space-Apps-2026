@@ -19,7 +19,8 @@ export interface ReplayInput {
   plan?: MissionPlan;
   difficulty: Difficulty;
   solarActivity?: number;
-  decisions: { eventId: string; option: string; skill?: number }[];
+  crewEvents?: boolean;
+  decisions: { eventId: string; option: string; skill?: number; timedOut?: boolean }[];
 }
 
 export type ReplayResult = { ok: true; outcome: Outcome; score: MissionScore; mission: MissionDef; design: Design } | { ok: false; reason: string };
@@ -66,15 +67,17 @@ export function validateReplay(x: unknown): { ok: true; value: ReplayInput } | {
   }
 
   if (!Array.isArray(r.decisions) || r.decisions.length > MAX_DECISIONS) return bad("Invalid decisions.");
+  if (r.crewEvents !== undefined && typeof r.crewEvents !== "boolean") return bad("Invalid crew-event setting.");
   const decisions: ReplayInput["decisions"] = [];
   for (const dec of r.decisions as unknown[]) {
-    const x2 = dec as { eventId?: unknown; option?: unknown; skill?: unknown };
+    const x2 = dec as { eventId?: unknown; option?: unknown; skill?: unknown; timedOut?: unknown };
     if (!x2 || !text(x2.eventId, 40) || !text(x2.option, 40)) return bad("Invalid decision.");
     if (x2.skill !== undefined && (typeof x2.skill !== "number" || !Number.isFinite(x2.skill))) return bad("Invalid decision.");
-    decisions.push({ eventId: x2.eventId, option: x2.option, ...(typeof x2.skill === "number" ? { skill: Math.min(1, Math.max(0, x2.skill)) } : {}) });
+    if (x2.timedOut !== undefined && typeof x2.timedOut !== "boolean") return bad("Invalid timeout.");
+    decisions.push({ eventId: x2.eventId, option: x2.option, ...(typeof x2.skill === "number" ? { skill: Math.min(1, Math.max(0, x2.skill)) } : {}), ...(x2.timedOut === true ? { timedOut: true } : {}) });
   }
 
-  return { ok: true, value: { missionId: r.missionId, design: { name, parts }, seed: r.seed, plan, difficulty: r.difficulty as Difficulty, solarActivity, decisions } };
+  return { ok: true, value: { missionId: r.missionId, design: { name, parts }, seed: r.seed, plan, difficulty: r.difficulty as Difficulty, solarActivity, crewEvents: r.crewEvents as boolean | undefined, decisions } };
 }
 
 /**
@@ -87,7 +90,7 @@ export function replayFlight(input: ReplayInput): ReplayResult {
   const gate = launchGate(input.design, mission, input.plan, Number.MAX_SAFE_INTEGER, true);
   if (launchBlockers(gate.checks).length) return { ok: false, reason: "That spacecraft could not have launched this mission." };
 
-  const f = new Flight(input.design, mission, input.seed, { plan: input.plan, difficulty: input.difficulty, solarActivity: input.solarActivity });
+  const f = new Flight(input.design, mission, input.seed, { plan: input.plan, difficulty: input.difficulty, solarActivity: input.solarActivity, crewEvents: input.crewEvents });
   let next = 0;
   for (let i = 0; i < 20_000 && (f.status === "running" || f.status === "decision"); i++) {
     if (f.status === "decision") {
@@ -96,7 +99,10 @@ export function replayFlight(input: ReplayInput): ReplayResult {
       if (!want || want.eventId !== p.eventId) return { ok: false, reason: "The recorded decisions do not match the flight." };
       const opt = p.options.find((o) => o.id === want.option);
       if (!opt || opt.disabled) return { ok: false, reason: "A recorded decision was not available." };
-      f.decide(want.option, want.skill);
+      if (want.timedOut) {
+        if (want.option !== p.fallback) return { ok: false, reason: "A recorded timeout did not use the default action." };
+        f.decideTimeout();
+      } else f.decide(want.option, want.skill);
     } else f.step(Math.max(f.chunkSeconds(), 1));
   }
   if (!f.outcome) return { ok: false, reason: "The flight did not finish." };

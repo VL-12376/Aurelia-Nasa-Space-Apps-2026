@@ -24,6 +24,23 @@ function flyLikeABrowser(design: Design, missionId: string, seed: number, opts: 
 }
 
 describe("replaying a flight on the server", () => {
+  it("replays crew checks, manual skill and timeout consequences without changing the result", () => {
+    for (const timeout of [false, true]) {
+      const f = new Flight(craft(), MISSIONS.find((m) => m.id === "s1-first-satellite")!, 3, { crewEvents: true, difficulty: "cadet" });
+      for (let i = 0; i < 5000 && !f.outcome; i++) {
+        if (f.pending) {
+          if (timeout) f.decideTimeout();
+          else f.decide(f.pending.options.find((o) => !o.disabled)!.id, 0.8);
+        } else f.step(600);
+      }
+      const input = validateReplay(f.replayInput());
+      expect(input.ok).toBe(true);
+      if (!input.ok) continue;
+      const replay = replayFlight(input.value);
+      expect(replay.ok).toBe(true);
+      if (replay.ok) expect(replay.outcome).toEqual(f.outcome);
+    }
+  });
   it("reproduces the browser's outcome and score exactly, across many seeds and choices", () => {
     let checked = 0;
     for (let seed = 1; seed <= 60; seed++) {

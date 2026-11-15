@@ -67,6 +67,14 @@ export function debriefScreen(): HTMLElement {
         kv("Operations cost", formatUsd(mission.costUsd)),
       ),
     ),
+    o.events?.length
+      ? h(
+          "div",
+          { class: "panel hud" },
+          h("h3", null, "Decisions and consequences"),
+          h("ul", { class: "lessons" }, ...o.events.map((e) => h("li", { class: e.tone }, h("strong", null, `${e.title}: `), `you chose "${e.choice}". `, e.text))),
+        )
+      : null,
     h("div", { class: "panel hud" }, h("h3", null, "Engineering lessons"), h("ul", { class: "lessons" }, ...o.lessons.map((l) => h("li", null, l)))),
     o.result !== "success" ? h("div", { class: "panel hud" }, h("h3", null, "What to change"), h("ul", { class: "lessons" }, ...fix.map((l) => h("li", null, l)))) : null,
     h("details", { class: "panel hud" }, h("summary", null, "Full mission log"), h("ul", { class: "mc-log full" }, ...rep.log.map((l) => h("li", { class: l.tone }, h("span", { class: "mono muted" }, fmtT(l.t)), h("span", null, l.text))))),

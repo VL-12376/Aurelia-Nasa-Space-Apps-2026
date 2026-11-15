@@ -27,6 +27,14 @@ export function aiDecide(pending: PendingDecision, f: Flight): { option: string;
       return has("early") && f.entryRisk() > 0.15 ? pick("early", "Firing engines early. The ballistic coefficient is too high to trust the shield alone.") : pick("trust", "The shield will hold. Riding it out.");
     case "instrument-fault":
       return pick("diagnose", "Full diagnostics. It takes longer but fixes it for good.");
+    case "wind-shear":
+      return pick("throttle", "Throttling down through Max Q. Better a slower climb than a bent rocket.");
+    case "thrust-shortfall":
+      return has("extend") ? pick("extend", "Extending the burn to make up the missing thrust.") : pick("accept", "No propellant to spare. Accepting the shortfall and correcting later.");
+    case "debris-warning":
+      return pick("avoid", "Dodging. A small burn is cheaper than a damaged spacecraft.");
+    case "data-full":
+      return pick("downlink", "Pausing to downlink. We keep every bit of the science.");
     default:
       return { option: enabled[0], line: "Going with the safest option." };
   }

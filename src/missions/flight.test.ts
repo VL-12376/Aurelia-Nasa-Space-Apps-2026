@@ -109,6 +109,55 @@ describe("flight simulation", () => {
     expect(hashSeed("abc")).not.toBe(hashSeed("abd"));
   });
 
+  it("warns before an event, records each decision, and ties odds to the design", () => {
+    let cautions = 0;
+    let recorded = 0;
+    let decisions = 0;
+    for (let s = 1; s <= 60; s++) {
+      const f = new Flight(template("earth-watch"), mission("s1-earth-watch"), s);
+      for (let i = 0; i < 5000 && (f.status === "running" || f.status === "decision"); i++) {
+        if (f.status === "decision") {
+          decisions++;
+          const idx = f.log.length - 1;
+          if (f.log.slice(Math.max(0, idx - 6), idx).some((l) => l.text.startsWith("Caution:"))) cautions++;
+          f.decide(f.pending!.options.filter((o) => !o.disabled)[0].id);
+        } else f.step(600);
+      }
+      recorded += f.outcome!.events?.length ?? 0;
+    }
+    expect(decisions).toBeGreaterThan(20);
+    expect(recorded).toBe(decisions);
+    expect(cautions).toBeGreaterThan(decisions * 0.4);
+
+    const base = new Flight(template("light-launcher"), mission("s1-first-satellite"), 1);
+    const strong = template("light-launcher");
+    let more = strong;
+    for (let i = 0; i < 3; i++) more = addPart(more, "kestrel-1", "s1").design;
+    const boosted = new Flight(more, mission("s1-first-satellite"), 1);
+    expect(boosted.windRisk()).toBeGreaterThan(base.windRisk());
+  });
+
+  it("random events show up across seeds, each is playable to the end, and most flights see one", () => {
+    const seen = new Set<string>();
+    let withEvent = 0;
+    for (let s = 1; s <= 80; s++) {
+      const f = new Flight(template("earth-watch"), mission("s1-earth-watch"), s);
+      let hadEvent = false;
+      for (let i = 0; i < 5000 && (f.status === "running" || f.status === "decision"); i++) {
+        if (f.status === "decision") {
+          hadEvent = true;
+          seen.add(f.pending!.eventId);
+          const options = f.pending!.options.filter((o) => !o.disabled).map((o) => o.id);
+          f.decide(options[s % options.length]);
+        } else f.step(600);
+      }
+      expect(f.outcome, `seed ${s}`).not.toBeNull();
+      if (hadEvent) withEvent++;
+    }
+    for (const id of ["wind-shear", "data-full", "debris-warning"]) expect(seen.has(id), id).toBe(true);
+    expect(withEvent).toBeGreaterThan(40);
+  });
+
   it("outcome numbers are sensible on success", () => {
     for (let s = 1; s <= 40; s++) {
       const f = fly(template("light-launcher"), "s1-first-satellite", s, (ids) => (ids.includes("shutdown") ? "shutdown" : ids[0]));

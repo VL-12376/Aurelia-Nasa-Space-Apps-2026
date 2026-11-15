@@ -39,11 +39,15 @@ export interface Resolution {
   fail?: string;
   /** Objective that can no longer be completed. */
   lostObjective?: number;
+  /** Thinner margins left behind by a gamble or a partial failure: raises the odds of later trouble. */
+  stress?: number;
 }
 
 interface EventDef {
   id: string;
   at: number;
+  /** Early sign shown in the log shortly before the event, as real telemetry would show a trend first. */
+  precursor?(p: Phase, f: Flight): string;
   applies(p: Phase, f: Flight): boolean;
   chance(p: Phase, f: Flight): number;
   build(p: Phase, f: Flight): PendingDecision;
@@ -113,6 +117,8 @@ export interface Outcome {
   researchPoints: number;
   experience: number;
   lessons: string[];
+  /** Every unplanned event and how the crew responded. */
+  events?: { title: string; choice: string; text: string; tone: Tone }[];
 }
 
 /** What the mission-control screen needs from a flight, whether it runs locally or on a server. */
@@ -203,6 +209,7 @@ const EVENTS: EventDef[] = [
   {
     id: "engine-anomaly",
     at: 0.4,
+    precursor: () => "chamber pressure on one booster engine is trending low.",
     applies: (p) => p.kind === "burn" && p.id === "ascent",
     chance: (_p, f) => Math.min(0.22, 0.07 + 0.015 * f.stats.stages[0].engines),
     build: (_p, f) => {
@@ -223,10 +230,10 @@ const EVENTS: EventDef[] = [
         if (n === 1) return { tone: "bad", text: "The only engine was shut down. The vehicle has no thrust.", fail: "Loss of the only booster engine: a single-engine stage has no redundancy.", lesson: "A single booster engine means any engine failure ends the mission. Clusters of two or more engines can survive losing one." };
         const twr = (f.stats.liftoffTwr * (n - 1)) / n;
         if (twr < 0.85) return { tone: "bad", text: `With ${n - 1} engines the vehicle can no longer climb (thrust-to-weight ${twr.toFixed(2)}).`, fail: "Not enough thrust remained after the engine was shut down.", lesson: "Engine-out survival needs spare thrust. This stage did not have enough thrust-to-weight to lose an engine." };
-        return { tone: "warn", text: `Engine shut down safely. Remaining thrust-to-weight is ${twr.toFixed(2)}, so the climb is slower and costs about 200 m/s extra.`, dvCost: 200, lesson: "A cluster of engines turned a failure into a delay. That redundancy is why many real boosters use several engines." };
+        return { tone: "warn", text: `Engine shut down safely. Remaining thrust-to-weight is ${twr.toFixed(2)}, so the climb is slower and costs about 200 m/s extra.`, dvCost: 200, stress: 0.15, lesson: "A cluster of engines turned a failure into a delay. That redundancy is why many real boosters use several engines." };
       }
       if (rng() < 0.35) return { tone: "bad", text: "The engine failed violently and damaged its neighbours.", fail: "Uncontained engine failure during ascent.", lesson: "Pushing a failing engine is a gamble. Shutting it down is usually the safer call." };
-      return { tone: "ok", text: "The engine held together and pressure stabilised. The burn continues normally.", lesson: "The gamble paid off this time, but a failing engine can destroy a stage in an instant." };
+      return { tone: "ok", text: "The engine held together and pressure stabilised. The burn continues normally.", stress: 0.25, lesson: "The gamble paid off this time, but a failing engine can destroy a stage in an instant." };
     },
   },
   {
@@ -258,8 +265,9 @@ const EVENTS: EventDef[] = [
   {
     id: "comm-dropout",
     at: 0.5,
+    precursor: (_p, f) => `downlink signal strength is fading. ${f.antennaCount() < 2 ? "There is no backup antenna." : "The backup antenna is ready."}`,
     applies: (p, f) => p.kind !== "burn" && p.id !== "deploy" && !f.fired("comm-dropout"),
-    chance: (_p, f) => 0.16 * f.antennaRisk(),
+    chance: (_p, f) => 0.22 * f.antennaRisk(),
     build: (_p, f) => ({
       eventId: "comm-dropout",
       title: "Communications dropout",
@@ -273,15 +281,16 @@ const EVENTS: EventDef[] = [
     resolve: (opt, _f, rng) => {
       if (opt === "backup") return { tone: "ok", text: "Switched to the backup antenna. The link recovered immediately.", lesson: "A second antenna is cheap insurance: it restored the link at once." };
       if (opt === "autonomy" && rng() < 0.7) return { tone: "ok", text: "The recovery script reacquired the signal in minutes.", delayS: 600 };
-      if (opt === "autonomy") return { tone: "warn", text: "The script failed and ground controllers had to resolve it. Hours were lost.", delayS: 14_400, science: 0.95 };
+      if (opt === "autonomy") return { tone: "warn", text: "The script failed and ground controllers had to resolve it. Hours were lost.", delayS: 14_400, science: 0.95, stress: 0.1 };
       return { tone: "warn", text: "Waited for the link to return. Hours were lost.", delayS: 10_800, lesson: "With no spare antenna and no good autonomy, the only option was to wait." };
     },
   },
   {
     id: "solar-flare",
     at: 0.55,
+    precursor: () => "space-weather watch: a large sunspot group has just erupted. Energetic particles are expected within the hour.",
     applies: (p, f) => (p.kind === "coast" || p.kind === "ops") && p.view !== "ascent" && f.t > 4_000 && !f.fired("solar-flare"),
-    chance: (p) => (p.kind === "coast" && p.durationS > 86_400 ? 0.12 : 0.04),
+    chance: (p) => (p.kind === "coast" && p.durationS > 86_400 ? 0.2 : 0.08),
     build: () => ({
       eventId: "solar-flare",
       title: "Solar flare warning",
@@ -292,9 +301,10 @@ const EVENTS: EventDef[] = [
       ],
     }),
     resolve: (opt, f, rng) => {
+      if (opt === "safe" && rng() < f.late()) return { tone: "warn", text: "The safe-mode command crossed the radio delay after the first particles had already arrived. One instrument took some damage.", delayS: 3_600, science: 0.8, stress: 0.1, lesson: "Far from Earth the particles can beat your command. That is why spacecraft detect radiation themselves and protect themselves automatically." };
       if (opt === "safe") return { tone: "ok", text: "Safe mode kept the electronics protected. The flare passed with no damage.", delayS: 3_600, lesson: "Safe mode costs a little science time but protects the hardware." };
-      if (rng() < 0.3) return { tone: "bad", text: "Particles damaged an instrument's electronics.", science: 0.55, lostObjective: f.lastScienceObjective(), lesson: "Staying fully operational risked the instruments, and this time it cost part of the science return." };
-      return { tone: "ok", text: "The flare was weaker than forecast. No damage.", lesson: "The risk did not materialise this time, but it was a gamble with the instruments." };
+      if (rng() < 0.3) return { tone: "bad", text: "Particles damaged an instrument's electronics.", science: 0.55, stress: 0.3, lostObjective: f.lastScienceObjective(), lesson: "Staying fully operational risked the instruments, and this time it cost part of the science return." };
+      return { tone: "ok", text: "The flare was weaker than forecast. No damage.", stress: 0.2, lesson: "The risk did not materialise this time, but it was a gamble with the instruments." };
     },
   },
   {
@@ -312,14 +322,15 @@ const EVENTS: EventDef[] = [
       ],
     }),
     resolve: (opt, _f, rng) => {
-      if (opt === "shed") return { tone: "warn", text: "Instruments switched off. The batteries recharged in sunlight.", science: 0.85, delayS: 5_400, lesson: "Shedding load kept the spacecraft alive, but you lost science time. More battery capacity would have avoided this." };
-      if (rng() < 0.4) return { tone: "bad", text: "The computer browned out and rebooted, losing observations.", science: 0.6, delayS: 7_200, lesson: "Running past the battery's limit crashed the computer. Eclipse needs battery energy, not just panels." };
-      return { tone: "ok", text: "Power held on until the Sun returned.", lesson: "You got away with it, but the margin was too thin." };
+      if (opt === "shed") return { tone: "warn", text: "Instruments switched off. The batteries recharged in sunlight.", science: 0.85, delayS: 5_400, stress: 0.1, lesson: "Shedding load kept the spacecraft alive, but you lost science time. More battery capacity would have avoided this." };
+      if (rng() < 0.4) return { tone: "bad", text: "The computer browned out and rebooted, losing observations.", science: 0.6, delayS: 7_200, stress: 0.3, lesson: "Running past the battery's limit crashed the computer. Eclipse needs battery energy, not just panels." };
+      return { tone: "ok", text: "Power held on until the Sun returned.", stress: 0.2, lesson: "You got away with it, but the margin was too thin." };
     },
   },
   {
     id: "landing-hazard",
     at: 0.85,
+    precursor: () => "descent imaging shows the terrain ahead is rougher than the orbital maps predicted.",
     applies: (p) => p.kind === "burn" && (p.id === "descent" || p.id === "edl"),
     chance: () => 0.6,
     build: (p, f) => {
@@ -346,6 +357,7 @@ const EVENTS: EventDef[] = [
   {
     id: "entry-heat",
     at: 0.5,
+    precursor: () => "entry interface reached. Heat-shield temperature is climbing fast.",
     applies: (p) => p.kind === "ops" && p.id === "entry",
     chance: () => 1,
     build: (_p, f) => {
@@ -369,8 +381,9 @@ const EVENTS: EventDef[] = [
   {
     id: "instrument-fault",
     at: 0.5,
+    precursor: () => "an instrument's temperature and current readings are drifting away from normal.",
     applies: (p) => p.kind === "ops" && !!p.science,
-    chance: () => 0.12,
+    chance: () => 0.2,
     build: () => ({
       eventId: "instrument-fault",
       title: "Instrument fault",
@@ -383,7 +396,94 @@ const EVENTS: EventDef[] = [
     resolve: (opt, _f, rng) => {
       const ok = rng() < (opt === "reboot" ? 0.85 : 0.98);
       const delay = opt === "reboot" ? 1_800 : 7_200;
-      return ok ? { tone: "ok", text: "The instrument recovered.", delayS: delay } : { tone: "warn", text: "The instrument recovered only partly.", delayS: delay, science: 0.7, lesson: "A quick reboot is faster but fixes less often than a full diagnostic." };
+      return ok ? { tone: "ok", text: "The instrument recovered.", delayS: delay } : { tone: "warn", text: "The instrument recovered only partly.", delayS: delay, science: 0.7, stress: 0.15, lesson: "A quick reboot is faster but fixes less often than a full diagnostic." };
+    },
+  },
+  {
+    id: "wind-shear",
+    at: 0.3,
+    precursor: () => "weather balloons show a strong jet stream along the flight path. Winds at the vehicle's altitude are rising.",
+    applies: (p) => p.kind === "burn" && p.id === "ascent",
+    chance: () => 0.3,
+    build: (_p, f) => ({
+      eventId: "wind-shear",
+      title: "Wind shear at Max Q",
+      body: `A strong jet-stream wind is hitting the rocket right as it passes through the region of maximum dynamic pressure, the moment the structure feels the most force. Your vehicle's thrust-to-weight of ${f.stats.liftoffTwr.toFixed(2)} sets how fast it arrives there: more thrust means a faster, harder hit. The guidance computer can throttle the engines back to ease the load, at the price of a slower climb.`,
+      options: [
+        { id: "throttle", label: "Throttle down through Max Q", hint: "Costs about 120 m/s of extra delta-v but keeps the loads low." },
+        { id: "press", label: "Fly through at full thrust", hint: `Saves fuel. ${Math.round(f.windRisk() * 100)}% chance the structure is overloaded, based on your thrust-to-weight.` },
+      ],
+    }),
+    resolve: (opt, f, rng) => {
+      if (opt === "throttle") return { tone: "warn", text: "The engines throttled back through the worst of it and the rocket flew on smoothly.", dvCost: Math.min(120, f.dvSpare()), lesson: "Real rockets throttle down for Max Q on purpose: slowing briefly while the air is thick is cheaper than a bent rocket." };
+      if (rng() < f.windRisk()) return { tone: "bad", text: "The wind loaded the structure past its limit and the vehicle broke up.", fail: "Structural failure at maximum dynamic pressure.", lesson: "Max Q is where speed and air density multiply into the biggest force on the vehicle. Pushing through shear there is a gamble, and a high thrust-to-weight raises the odds against you." };
+      return { tone: "ok", text: "The structure held. That was close.", stress: 0.25, lesson: "It held this time, but the margin at Max Q is exactly why real launches are delayed for high winds." };
+    },
+  },
+  {
+    id: "thrust-shortfall",
+    at: 0.5,
+    precursor: () => "chamber pressure is running a few percent low. Thrust is slightly under plan.",
+    applies: (p) => p.kind === "burn" && p.id !== "ascent" && p.id !== "descent" && p.id !== "edl",
+    chance: () => 0.18,
+    build: (_p, f) => ({
+      eventId: "thrust-shortfall",
+      title: "Engine running below thrust",
+      body: `The engine is delivering about 6% less thrust than planned, so the burn will end short of the speed it needs. Controllers can extend the burn to make it up, or accept a small error and fix it later. You have about ${Math.round(f.dvSpare())} m/s of spare delta-v to pay for it.`,
+      options: [
+        { id: "extend", label: "Extend the burn", hint: "Costs about 80 m/s of extra propellant and some time.", disabled: f.dvSpare() < 80 ? "Not enough propellant" : undefined },
+        { id: "accept", label: "Accept the shortfall", hint: `Saves fuel. ${Math.round(f.shortfallRisk() * 100)}% chance the target is missed: the less spare delta-v you hold, the worse the odds.` },
+      ],
+    }),
+    resolve: (opt, f, rng) => {
+      if (opt === "extend") return { tone: "ok", text: "The burn ran a little longer and the target speed was reached.", dvCost: 80, delayS: 120, lesson: "Burns are timed to reach a speed, not a clock reading. A weak engine just needs longer, provided there is propellant left to pay for it." };
+      if (rng() < f.shortfallRisk()) return { tone: "bad", text: "The shortfall left the spacecraft on the wrong path.", fail: "Burn ended short of the required speed.", lesson: "A small speed error early in a trajectory becomes a large position error later. That is why mission plans carry spare delta-v." };
+      return { tone: "ok", text: "The error was small enough to absorb in later corrections.", stress: 0.2, lesson: "It worked out, but only because the later correction burns had some spare margin." };
+    },
+  },
+  {
+    id: "debris-warning",
+    at: 0.4,
+    precursor: () => "the tracking network has flagged a possible close approach by an object in a similar orbit.",
+    applies: (p, f) => (p.kind === "coast" || p.kind === "ops") && p.view !== "ascent" && f.t > 3_000 && !f.fired("debris-warning"),
+    chance: (p) => (p.view === "earth-orbit" ? 0.12 : 0.05),
+    build: (_p, f) => ({
+      eventId: "debris-warning",
+      title: "Debris close approach",
+      body: "Tracking shows a piece of orbiting debris will pass within a few hundred metres of the spacecraft. At orbital speeds even a fleck of paint can punch through hardware, so controllers have to decide whether to move. Large solar wings make a bigger target.",
+      options: [
+        { id: "avoid", label: "Fire thrusters to dodge it", hint: `Costs about 25 m/s of propellant and a little time.${f.late() > 0.05 ? " At this distance the command may arrive too late." : ""}` },
+        { id: "accept", label: "Accept the small risk", hint: `Saves fuel. ${Math.round(f.debrisRisk() * 100)}% chance of impact damage, based on the size of your solar wings.` },
+      ],
+    }),
+    resolve: (opt, f, rng) => {
+      const late = opt === "avoid" && rng() < f.late();
+      if (opt === "avoid" && !late) return { tone: "ok", text: "A short thruster burn moved the spacecraft clear.", dvCost: Math.min(25, f.dvSpare()), delayS: 600, lesson: "Real operators move satellites for conjunctions like this. Spare propellant is also safety margin." };
+      if (rng() < f.debrisRisk()) return { tone: "bad", text: late ? "The dodge command arrived too late and a fragment struck the spacecraft." : "A fragment struck the spacecraft and damaged an instrument.", science: 0.6, stress: 0.3, lostObjective: f.lastScienceObjective(), lesson: "Debris is small but moves at around 10 km/s relative to you. Skipping the dodge, or acting too late, cost science." };
+      return { tone: "ok", text: late ? "The command arrived late, but the debris still passed clear." : "The debris passed by without touching the spacecraft.", stress: 0.15, lesson: "You were lucky. A miss distance of a few hundred metres is within the uncertainty of tracking." };
+    },
+  },
+  {
+    id: "data-full",
+    at: 0.6,
+    precursor: () => "the onboard recorder is over 80% full and filling faster than the radio can empty it.",
+    applies: (p) => p.kind === "ops" && !!p.science,
+    chance: () => 0.2,
+    build: () => ({
+      eventId: "data-full",
+      title: "Data storage nearly full",
+      body: "The instruments are producing data faster than the radio can send it to Earth, and the onboard recorder is almost full. A spacecraft can only keep what it can store, and only deliver what it can transmit.",
+      options: [
+        { id: "downlink", label: "Pause science and downlink", hint: "Costs about 2 hours. Nothing is lost." },
+        { id: "prioritise", label: "Drop the lowest-value data", hint: "Keeps observing, but about 10% of the science return is lost." },
+        { id: "compress", label: "Switch to heavy compression", hint: "Fits more data, with a 40% chance of corrupting some of it." },
+      ],
+    }),
+    resolve: (opt, _f, rng) => {
+      if (opt === "downlink") return { tone: "ok", text: "Observations paused while the recorder emptied to Earth. Nothing was lost.", delayS: 7_200, lesson: "Data volume and radio bandwidth are real limits. A bigger antenna or a faster link would have cleared this sooner." };
+      if (opt === "prioritise") return { tone: "warn", text: "The least valuable images were deleted to make room.", science: 0.9, lesson: "Operators rank data by value for exactly this reason: when something has to go, it should not be the best of it." };
+      if (rng() < 0.4) return { tone: "bad", text: "Compression artefacts corrupted part of the dataset.", science: 0.7, stress: 0.2, lesson: "Aggressive compression saves space by throwing information away. It is a gamble when the data is the whole point." };
+      return { tone: "ok", text: "The compression worked and the recorder kept up.", stress: 0.1, lesson: "It worked this time, but the real fix is a bigger link or recorder." };
     },
   },
 ];
@@ -411,8 +511,11 @@ export class Flight {
   private segIdx = 0;
   private segT = 0;
   private shortfall = 0;
-  private schedule: { def: EventDef; at: number }[] = [];
+  private schedule: { def: EventDef; at: number; warned: boolean }[] = [];
   private firedEvents = new Set<string>();
+  /** Accumulated risk from gambles and damage; scales the odds of every later event. */
+  private stress = 0;
+  private record: NonNullable<Outcome["events"]> = [];
   private objectives: boolean[];
   private scienceUp = 1;
   private scienceDone = 0;
@@ -454,6 +557,28 @@ export class Flight {
   /* ---------- helpers used by events ---------- */
   fired(id: string): boolean {
     return this.firedEvents.has(id);
+  }
+  /** Round-trip radio time to the spacecraft, seconds: a command and its confirmation each take one light-time. */
+  rttS(): number {
+    return 2 * lightDelaySeconds(this.lastKin.distEarthKm);
+  }
+  /** 0 near Earth to 0.6 far away: the chance that a time-critical command arrives after the danger has passed. */
+  late(): number {
+    return Math.min(0.6, Math.max(0, (this.rttS() - 30) / 2400));
+  }
+  /** Size of the spacecraft's solar wings, a proxy for how big a target it is. */
+  solarExposure(): number {
+    return this.design.parts.map(part).reduce((n, p) => (p.category === "solar" ? n + p.size : n), 0);
+  }
+  /** Chance that pushing through Max Q overloads the structure: faster, more powerful rockets hit it harder. */
+  windRisk(): number {
+    return Math.min(0.5, Math.max(0.08, 0.12 + 0.18 * (this.stats.liftoffTwr - 1.2)));
+  }
+  debrisRisk(): number {
+    return Math.min(0.25, 0.04 + 0.02 * this.solarExposure());
+  }
+  shortfallRisk(): number {
+    return Math.min(0.45, Math.max(0.05, 0.45 - this.dvSpare() / 600));
   }
   hasNav(): boolean {
     return this.stats.capabilities.includes("navigation");
@@ -565,10 +690,10 @@ export class Flight {
       this.phaseDur = p.durationS;
       this.say("info", p.label);
     }
-    // Roll the dice for events once, at the start of each phase.
+    // Roll the dice for events once, at the start of each phase. Earlier trouble makes more trouble likelier.
     this.schedule = [];
     for (const def of EVENTS) {
-      if (def.applies(p, this) && this.rng() < def.chance(p, this)) this.schedule.push({ def, at: def.at });
+      if (def.applies(p, this) && this.rng() < Math.min(0.95, def.chance(p, this) * (1 + this.stress))) this.schedule.push({ def, at: def.at, warned: false });
     }
     this.schedule.sort((a, b) => a.at - b.at);
   }
@@ -597,7 +722,10 @@ export class Flight {
     let n = this.phaseDur - this.phaseT;
     if (this.phaseKind() === "burn" && this.segIdx < this.segments.length) n = Math.min(n, this.segments[this.segIdx].duration - this.segT);
     const ev = this.schedule[0];
-    if (ev) n = Math.min(n, Math.max(ev.at * this.phaseDur - this.phaseT, 0));
+    if (ev) {
+      if (!ev.warned && ev.def.precursor && ev.at >= 0.15) n = Math.min(n, Math.max((ev.at - 0.06) * this.phaseDur - this.phaseT, 0));
+      else n = Math.min(n, Math.max(ev.at * this.phaseDur - this.phaseT, 0));
+    }
     return Math.max(n, 0);
   }
 
@@ -650,6 +778,11 @@ export class Flight {
       }
     }
     const ev = this.schedule[0];
+    if (ev && !ev.warned && ev.def.precursor && ev.at >= 0.15 && this.phaseT >= (ev.at - 0.06) * this.phaseDur - 1e-6) {
+      ev.warned = true;
+      this.say("warn", `Caution: ${ev.def.precursor(this.phases[this.phaseIdx], this)}`);
+      return;
+    }
     if (ev && this.phaseT >= ev.at * this.phaseDur - 1e-6) {
       this.schedule.shift();
       this.raise(ev.def);
@@ -677,6 +810,11 @@ export class Flight {
     const p = this.phases[this.phaseIdx];
     this.firedEvents.add(def.id);
     this.pending = def.build(p, this);
+    const rtt = this.rttS();
+    if (rtt > 60) {
+      const mins = rtt / 120;
+      this.pending = { ...this.pending, body: `${this.pending.body} Radio delay: any order takes ${mins < 1 ? `${Math.round(mins * 60)} seconds` : `${mins.toFixed(1)} minutes`} to reach the spacecraft, and the same again for the answer, so the spacecraft cannot wait for you.` };
+    }
     this.status = "decision";
     this.say("warn", this.pending.title);
   }
@@ -687,12 +825,24 @@ export class Flight {
     const def = EVENTS.find((e) => e.id === this.pending!.eventId)!;
     const opt = this.pending.options.find((o) => o.id === optionId);
     if (!opt || opt.disabled) return;
+    const title = this.pending.title;
+    const rtt = this.rttS();
     const res = def.resolve(optionId, this, this.rng);
     this.pending = null;
     this.status = "running";
     this.say(res.tone, `${opt.label}: ${res.text}`);
+    this.record.push({ title, choice: opt.label, text: res.text, tone: res.tone });
     if (res.lesson) this.lessons.push(res.lesson);
     if (res.science) this.scienceUp *= res.science;
+    if (res.stress) {
+      this.stress += res.stress;
+      this.say("warn", "Margins are thinner now: further problems are more likely.");
+    }
+    if (rtt > 60) {
+      this.delay(rtt);
+      this.say("info", `The command took ${(rtt / 120).toFixed(1)} min to reach the spacecraft and the confirmation as long to return.`);
+      this.lessons.push("Far from Earth, radio delay means ground control cannot react in time. Real spacecraft carry autonomous fault protection, and mission plans leave margin for it.");
+    }
     if (res.lostObjective !== undefined) {
       this.objectives[res.lostObjective] = false;
       this.lost.add(res.lostObjective);
@@ -805,7 +955,8 @@ export class Flight {
       dvDelivered: this.dvDelivered, dvBudget: budget, dvMarginPct: marginPct,
       propellantLeftPct: propTotal ? (propLeft / propTotal) * 100 : 0,
       fundsEarned: funds, reputation: rep, researchPoints: rp, experience: xp,
-      lessons: [...new Set(this.lessons)].slice(0, 7),
+      lessons: [...new Set(this.lessons)].slice(0, 8),
+      events: this.record,
     };
   }
 

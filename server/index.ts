@@ -5,7 +5,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { DEFAULT_PORT, type ClientMsg, type ServerMsg } from "../src/net/protocol";
 import { Room } from "./room";
 import { spaceNow } from "./live";
-import { RateLimiter, ScoreStore, MAX_LIST, validateSubmission } from "./scores";
+import { RateLimiter, ScoreStore, MAX_LIST, validateSubmission, type RemoteStore } from "./scores";
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ";
 const TICK_MS = 50;
@@ -34,6 +34,8 @@ export interface RunningServer {
 export interface ServerOptions {
   /** Where the leaderboard is saved. Omit to keep it in memory only (the tests do this). */
   scoresFile?: string | null;
+  /** Durable leaderboard storage (a Redis-compatible REST service), so scores survive restarts on a free host. */
+  scoresRemote?: RemoteStore | null;
 }
 
 const CORS = { "access-control-allow-origin": "*" };
@@ -59,7 +61,7 @@ function clientIp(req: IncomingMessage): string {
 export function startServer(port = DEFAULT_PORT, host = "0.0.0.0", options: ServerOptions = {}): Promise<RunningServer> {
   const rooms = new Map<string, Room>();
   const conns = new Map<string, Conn>();
-  const scores = new ScoreStore({ file: options.scoresFile ?? null });
+  const scores = new ScoreStore({ file: options.scoresFile ?? null, remote: options.scoresRemote ?? null });
   const submitLimit = new RateLimiter(8, 60_000);
 
   const handleScores = (req: IncomingMessage, res: ServerResponse, url: URL) => {
@@ -293,8 +295,12 @@ export function startServer(port = DEFAULT_PORT, host = "0.0.0.0", options: Serv
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const port = Number(process.env.PORT) || DEFAULT_PORT;
-  startServer(port, "0.0.0.0", { scoresFile: process.env.SCORES_FILE || "./data/scores.json" }).then((s) => {
+  const remoteUrl = process.env.SCORES_REDIS_REST_URL || process.env.UPSTASH_REDIS_REST_URL;
+  const remoteToken = process.env.SCORES_REDIS_REST_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+  const scoresRemote = remoteUrl && remoteToken ? { url: remoteUrl, token: remoteToken } : null;
+  startServer(port, "0.0.0.0", { scoresFile: process.env.SCORES_FILE || "./data/scores.json", scoresRemote }).then((s) => {
     console.log(`AURELIA multiplayer server listening on ws://localhost:${s.port}`);
+    console.log(scoresRemote ? "Leaderboard storage: durable remote store plus local file." : "Leaderboard storage: local file only (resets when this host restarts). See the README to add a free durable store.");
     // A redeploy sends SIGTERM; save the leaderboard before exiting.
     for (const sig of ["SIGTERM", "SIGINT"] as const) process.once(sig, () => void s.close().then(() => process.exit(0)));
   });

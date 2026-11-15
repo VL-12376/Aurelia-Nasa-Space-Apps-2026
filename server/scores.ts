@@ -86,9 +86,20 @@ function isRecord(r: unknown): r is ScoreRecord {
   return typeof e.id === "string" && typeof e.name === "string" && typeof e.missionId === "string" && typeof e.missionName === "string" && typeof e.craftName === "string" && typeof e.score === "number" && RESULTS.has(String(e.result)) && DIFFICULTY_IDS.has(String(e.difficulty)) && typeof e.verified === "boolean" && typeof e.at === "number";
 }
 
+export interface RemoteStore {
+  /** Base URL of a Redis-compatible REST service, for example the one a free hosted Redis gives you. */
+  url: string;
+  token: string;
+  key?: string;
+}
+
 export interface ScoreStoreOptions {
   /** JSON file to load from and save to. Omit to keep scores in memory only. */
   file?: string | null;
+  /** Durable storage that survives restarts on hosts with a throw-away disk. Used together with the file. */
+  remote?: RemoteStore | null;
+  /** Injected for tests. */
+  fetchImpl?: typeof fetch;
   max?: number;
   debounceMs?: number;
 }
@@ -96,20 +107,46 @@ export interface ScoreStoreOptions {
 export class ScoreStore {
   private entries: ScoreRecord[] = [];
   private readonly file: string | null;
+  private readonly remote: Required<RemoteStore> | null;
+  private readonly fetchImpl: typeof fetch;
   private readonly max: number;
   private readonly debounceMs: number;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private writing: Promise<void> = Promise.resolve();
+  /** Resolves once the durable copy (if any) has been merged in. */
+  readonly ready: Promise<void>;
 
   constructor(opts: ScoreStoreOptions = {}) {
     this.file = opts.file ?? null;
+    this.remote = opts.remote ? { key: "aurelia:scores", ...opts.remote, url: opts.remote.url.replace(/\/+$/, "") } : null;
+    this.fetchImpl = opts.fetchImpl ?? fetch;
     this.max = opts.max ?? MAX_ENTRIES;
     this.debounceMs = opts.debounceMs ?? WRITE_DEBOUNCE_MS;
     this.load();
+    this.ready = this.loadRemote();
   }
 
   get size(): number {
     return this.entries.length;
+  }
+
+  /** Pulls the durable copy in and merges it with anything already here, so a restart never loses the board. */
+  private async loadRemote(): Promise<void> {
+    const r = this.remote;
+    if (!r) return;
+    try {
+      const res = await this.fetchImpl(`${r.url}/get/${encodeURIComponent(r.key)}`, { headers: { authorization: `Bearer ${r.token}` }, signal: AbortSignal.timeout(10_000) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = (await res.json()) as { result?: string | null };
+      if (!body.result) return;
+      const data = JSON.parse(body.result) as { entries?: unknown };
+      if (!Array.isArray(data.entries)) return;
+      const have = new Set(this.entries.map((e) => e.id));
+      for (const e of data.entries) if (isRecord(e) && !have.has(e.id)) this.entries.push(e);
+      this.trim();
+    } catch (e) {
+      console.warn("Could not read the durable leaderboard; using what this server has.", (e as Error).message);
+    }
   }
 
   private load(): void {
@@ -164,7 +201,7 @@ export class ScoreStore {
   }
 
   private schedule(): void {
-    if (!this.file || this.timer) return;
+    if ((!this.file && !this.remote) || this.timer) return;
     this.timer = setTimeout(() => {
       this.timer = null;
       void this.save();
@@ -172,19 +209,28 @@ export class ScoreStore {
     this.timer.unref?.();
   }
 
-  /** Writes to a temporary file and renames it, so a crash never leaves half a file. */
+  /** Writes to a temporary file and renames it, so a crash never leaves half a file; also updates the durable copy. */
   private save(): Promise<void> {
     const file = this.file;
-    if (!file) return Promise.resolve();
-    const json = JSON.stringify({ entries: this.entries });
+    const remote = this.remote;
+    if (!file && !remote) return Promise.resolve();
     this.writing = this.writing
       .then(async () => {
-        mkdirSync(dirname(file), { recursive: true });
-        const tmp = `${file}.${process.pid}.tmp`;
-        await writeFile(tmp, json, "utf8");
-        await rename(tmp, file);
+        // Never overwrite the durable copy before it has been read, or a restart could erase the board.
+        await this.ready;
+        const json = JSON.stringify({ entries: this.entries });
+        if (file) {
+          mkdirSync(dirname(file), { recursive: true });
+          const tmp = `${file}.${process.pid}.tmp`;
+          await writeFile(tmp, json, "utf8");
+          await rename(tmp, file);
+        }
+        if (remote) {
+          const res = await this.fetchImpl(`${remote.url}/set/${encodeURIComponent(remote.key)}`, { method: "POST", headers: { authorization: `Bearer ${remote.token}` }, body: json, signal: AbortSignal.timeout(10_000) });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        }
       })
-      .catch((e: Error) => console.warn("Could not save the scores file.", e.message));
+      .catch((e: Error) => console.warn("Could not save the leaderboard.", e.message));
     return this.writing;
   }
 

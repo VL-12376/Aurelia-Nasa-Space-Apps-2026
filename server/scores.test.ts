@@ -90,6 +90,58 @@ describe("ScoreStore", () => {
   });
 });
 
+describe("durable leaderboard storage", () => {
+  /** A tiny stand-in for a Redis-compatible REST service: GET /get/<key> and POST /set/<key> with the value as the body. */
+  const fakeRemote = (initial: string | null = null) => {
+    const db = new Map<string, string>();
+    if (initial !== null) db.set("aurelia:scores", initial);
+    const calls: string[] = [];
+    const impl = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      calls.push(`${init?.method ?? "GET"} ${url}`);
+      if ((init?.headers as Record<string, string>)?.authorization !== "Bearer secret") return new Response("no", { status: 401 });
+      const key = decodeURIComponent(url.split("/").pop()!);
+      if (url.includes("/get/")) return new Response(JSON.stringify({ result: db.get(key) ?? null }));
+      db.set(key, String(init?.body));
+      return new Response(JSON.stringify({ result: "OK" }));
+    }) as unknown as typeof fetch;
+    return { db, calls, impl };
+  };
+
+  it("keeps the board across a restart that wipes the local disk", async () => {
+    const remote = fakeRemote();
+    const a = new ScoreStore({ remote: { url: "https://store.example/", token: "secret" }, fetchImpl: remote.impl, debounceMs: 1 });
+    await a.ready;
+    a.add(sub({ name: "Survivor", score: 91 }), { verified: false });
+    await a.flush();
+    expect(remote.db.get("aurelia:scores")).toContain("Survivor");
+
+    // A fresh server with an empty disk reads it back.
+    const b = new ScoreStore({ remote: { url: "https://store.example", token: "secret" }, fetchImpl: remote.impl });
+    await b.ready;
+    expect(b.list("all", 5)[0]).toMatchObject({ name: "Survivor", score: 91 });
+  });
+
+  it("does not overwrite the durable copy with an empty board before reading it", async () => {
+    const seed = JSON.stringify({ entries: [{ id: "abc", name: "Old", missionId: mission, missionName: "x", craftName: "c", score: 50, result: "success", difficulty: "engineer", verified: false, at: 1 }] });
+    const remote = fakeRemote(seed);
+    const s = new ScoreStore({ remote: { url: "https://store.example", token: "secret" }, fetchImpl: remote.impl, debounceMs: 1 });
+    s.add(sub({ name: "New", score: 60 }), { verified: false });
+    await s.flush();
+    const saved = JSON.parse(remote.db.get("aurelia:scores")!) as { entries: { name: string }[] };
+    expect(saved.entries.map((e) => e.name).sort()).toEqual(["New", "Old"]);
+  });
+
+  it("falls back to local scores if the durable store is unreachable", async () => {
+    const down = (async () => new Response("down", { status: 500 })) as unknown as typeof fetch;
+    const s = new ScoreStore({ remote: { url: "https://store.example", token: "secret" }, fetchImpl: down, debounceMs: 1 });
+    await s.ready;
+    s.add(sub({ name: "Local" }), { verified: false });
+    await s.flush();
+    expect(s.list("all", 5)[0].name).toBe("Local");
+  });
+});
+
 describe("RateLimiter", () => {
   it("allows a burst up to the limit per address, then recovers", () => {
     const r = new RateLimiter(3, 1000);

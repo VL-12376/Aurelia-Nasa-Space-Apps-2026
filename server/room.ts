@@ -2,9 +2,12 @@ import { aiContribute, aiDecide, crewName } from "../src/crew/ai";
 import { ROLES, ROLE_BY_ID, roleForEvent, roleForPart, type RoleId } from "../src/crew/roles";
 import { newGameState, type GameState } from "../src/core/gameState";
 import { trySpend, type BudgetCategoryId } from "../src/budget/budget";
-import { Flight, hashSeed, launchBlockers, preflight } from "../src/missions/flight";
+import { Flight, hashSeed, launchBlockers, preflight, type Outcome } from "../src/missions/flight";
 import { MISSIONS } from "../src/missions/missions";
 import { applyOutcome } from "../src/missions/results";
+import { validateSubmission, teamLabel, type ScoreStore } from "./scores";
+import { peekSpaceNow, spaceNow } from "./live";
+import { describeFlare } from "../src/data/weather";
 import { MAX_PLAYERS, type ClientMsg, type FlightSnapshot, type Phase, type PlayerView, type RoomView, type ServerMsg } from "../src/net/protocol";
 import { TECHS } from "../src/research/tech";
 import { addPart, analyse, emptyDesign, isUnlocked, type BuiltCraft, type Design } from "../src/spacecraft/design";
@@ -76,8 +79,9 @@ export class Room {
   private lastSnapshot: FlightSnapshot | null = null;
   private ended = false;
 
-  constructor(readonly code: string, readonly sandbox: boolean, private net: Transport) {
+  constructor(readonly code: string, readonly sandbox: boolean, private net: Transport, private scores: ScoreStore | null = null) {
     this.game = newGameState("multiplayer", sandbox ? 4 : 1);
+    this.game.sandbox = sandbox;
     this.game.agencyName = "AURELIA";
     if (sandbox) this.game.researchedTech = TECHS.map((t) => t.id);
   }
@@ -330,7 +334,14 @@ export class Room {
     g.flights += 1;
     this.flightSeed = hashSeed(`${this.code}:${craftId}:${mission.id}:${g.flights}`);
     this.flightCraft = craft.name;
-    this.flight = new Flight(design, mission, this.flightSeed);
+    const live = peekSpaceNow()?.weather;
+    void spaceNow().catch(() => undefined);
+    this.flight = new Flight(design, mission, this.flightSeed, {
+      difficulty: g.difficulty,
+      sandbox: g.sandbox,
+      solarActivity: live?.activity,
+      latestFlare: live?.flares?.[0] ? describeFlare(live.flares[0]) : undefined,
+    });
     this.warp = "auto";
     this.paused = false;
     this.decisionKey = "";
@@ -391,11 +402,20 @@ export class Room {
       this.ended = true;
       const mission = MISSIONS.find((m) => m.id === this.missionId)!;
       applyOutcome(this.game, mission, this.flightCraft, this.flightSeed, f.outcome, f.log);
+      this.recordScore(mission.id, f.outcome);
       this.pushFlight(true);
       this.phase = "debrief";
       this.say(null, false, `${mission.name}: ${f.outcome.headline}.`);
       this.sync();
     }
+  }
+
+  /** The result was computed here, so it goes on the global leaderboard marked as verified. */
+  private recordScore(missionId: string, outcome: Outcome): void {
+    if (!this.scores || this.sandbox || !outcome.score) return;
+    const names = this.players.map((p) => p.name);
+    const v = validateSubmission({ name: teamLabel(names), missionId, craftName: this.flightCraft, score: outcome.score.total, result: outcome.result, difficulty: this.game.difficulty });
+    if (v.ok) this.scores.add(v.value, { verified: true, team: names });
   }
 
   /* ---------- output ---------- */

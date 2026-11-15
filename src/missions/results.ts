@@ -1,6 +1,9 @@
 import type { GameState } from "../core/store";
 import type { LogEntry, Outcome } from "./flight";
 import { MISSIONS, type MissionDef } from "./missions";
+import { computeScore } from "./score";
+
+const MAX_SCORES = 50;
 
 /** Writes a finished flight into the saved game: money, standing, research, progression. */
 export function applyOutcome(g: GameState, mission: MissionDef, craftName: string, seed: number, outcome: Outcome, log: LogEntry[]): { seasonUnlocked: number | null } {
@@ -8,6 +11,12 @@ export function applyOutcome(g: GameState, mission: MissionDef, craftName: strin
   g.reputation = Math.max(0, g.reputation + outcome.reputation);
   g.researchPoints += outcome.researchPoints;
   g.experience += outcome.experience;
+
+  // Sandbox missions are practice: never scored, never ranked.
+  if (!g.sandbox) {
+    outcome.score = computeScore(outcome, mission, g.difficulty ?? "engineer");
+    g.scores = [{ missionId: mission.id, missionName: mission.name, craftName, score: outcome.score.total, result: outcome.result, difficulty: g.difficulty ?? "engineer", year: g.year, at: Date.now() }, ...(g.scores ?? [])].slice(0, MAX_SCORES);
+  }
 
   if (outcome.result === "success") {
     if (!g.completedMissions.includes(mission.id)) g.completedMissions.push(mission.id);

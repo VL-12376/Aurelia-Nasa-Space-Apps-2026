@@ -1,4 +1,5 @@
-import { h } from "../../core/dom";
+import { h, toast } from "../../core/dom";
+import { openDialog } from "../dialog";
 import { router } from "../../core/router";
 import { store, type Settings } from "../../core/store";
 import { audio } from "../../audio/engine";
@@ -8,6 +9,41 @@ import { DISCLAIMER, SOURCES } from "../../data/real";
 function slider(id: string, label: string, value: number, onInput: (v: number) => void): HTMLElement {
   const input = h("input", { type: "range", id, min: 0, max: 100, step: 1, value: Math.round(value * 100), "aria-label": label, oninput: (e: Event) => onInput(Number((e.target as HTMLInputElement).value) / 100) });
   return h("div", { class: "field" }, h("label", { for: id }, label), input);
+}
+
+function confirmClearAll(): void {
+  const lastChance = () =>
+    openDialog({
+      title: "Last chance",
+      body: h("p", null, "Are you absolutely sure? Everything will be erased and this cannot be undone."),
+      actions: [
+        { label: "No, keep my progress", kind: "primary", default: true, onClick: () => undefined },
+        {
+          label: "Yes, erase everything",
+          kind: "danger",
+          onClick: () => {
+            store.clearProgress();
+            toast("All data erased. You are back at level one.");
+            router.navigate("menu");
+          },
+        },
+      ],
+    });
+
+  openDialog({
+    title: "Clear all data?",
+    body: h(
+      "div",
+      null,
+      h("p", null, "This permanently erases your saved game on this device:"),
+      h("ul", null, ...["Campaign progress and your funds", "Research you have completed", "Spacecraft you have built", "Your saved designs", "Flight history", "Personal best scores"].map((t) => h("li", null, t))),
+      h("p", null, "You will return to level one. Settings such as volume are kept."),
+    ),
+    actions: [
+      { label: "Cancel", kind: "ghost", default: true, onClick: () => undefined },
+      { label: "Continue", kind: "danger", onClick: () => { lastChance(); } },
+    ],
+  });
 }
 
 export function settingsScreen(): HTMLElement {
@@ -52,6 +88,13 @@ export function settingsScreen(): HTMLElement {
         slider("set-music", "Music volume", settings.musicVolume, (v) => sound({ musicVolume: v })),
         slider("set-sfx", "Effects volume", settings.sfxVolume, (v) => { sound({ sfxVolume: v }); audio.sfx("confirm"); }),
         h("div", { class: "field" }, h("label", { for: "set-mute" }, "Mute everything"), h("input", { type: "checkbox", id: "set-mute", checked: settings.muted, onchange: (e: Event) => sound({ muted: (e.target as HTMLInputElement).checked }) })),
+      ),
+      h(
+        "div",
+        { class: "panel danger-zone" },
+        h("h3", null, "Danger zone"),
+        h("p", { class: "muted small" }, "Erase your saved campaign and start again from level one. Your settings are kept."),
+        h("button", { class: "btn small ghost", id: "clear-all-data", onclick: confirmClearAll }, "Clear all data"),
       ),
       h(
         "div",

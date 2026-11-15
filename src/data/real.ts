@@ -7,8 +7,17 @@
  */
 
 export const SOURCES = [
-  { name: "NASA/JPL Horizons System", use: "Live position of the Moon", url: "https://ssd.jpl.nasa.gov/horizons/" },
+  { name: "NASA/JPL Horizons System", use: "Live position of the Moon and Mars", url: "https://ssd.jpl.nasa.gov/horizons/" },
   { name: "NASA/JPL SBDB Close-Approach Data API", use: "Live asteroid close approaches", url: "https://ssd-api.jpl.nasa.gov/doc/cad.html" },
+  { name: "NASA DONKI (Space Weather Database Of Notifications, Knowledge, Information)", use: "Live solar flares, coronal mass ejections and storms", url: "https://ccmc.gsfc.nasa.gov/tools/DONKI/" },
+  { name: "NASA Open APIs portal (api.nasa.gov)", use: "API key and gateway for the space weather data", url: "https://api.nasa.gov/" },
+  { name: "NASA Image and Video Library", use: "Pictures of the real missions", url: "https://images.nasa.gov/" },
+  { name: "NASA 3D Resources", use: "Real spacecraft models to explore (linked, not included in the game)", url: "https://science.nasa.gov/3d-resources/" },
+  { name: "NASA Artemis", use: "Artemis I, II and III facts", url: "https://www.nasa.gov/humans-in-space/artemis/" },
+  { name: "NASA Human Research Program", use: "Radiation, fatigue and crew health", url: "https://www.nasa.gov/hrp/" },
+  { name: "George et al. 2024, Nature: space radiation measurements during Artemis I", use: "Measured dose rates in Orion, on the ISS and on Mars", url: "https://doi.org/10.1038/s41586-024-07927-7" },
+  { name: "NASA/JPL release (2013, mirrored by ScienceDaily): radiation measured by Curiosity on the voyage to Mars", use: "Radiation inside a Mars-bound spacecraft", url: "https://www.sciencedaily.com/releases/2013/05/130530145930.htm" },
+  { name: "NASA-STD-3001 Technical Brief: Design for Ionizing Radiation Protection", use: "NASA's career dose limit for astronauts", url: "https://www.nasa.gov/wp-content/uploads/2023/12/ochmo-tb-020-radiation-protection.pdf" },
   { name: "NASA NSSDCA Planetary Fact Sheets", use: "Planet and Moon measurements", url: "https://nssdc.gsfc.nasa.gov/planetary/factsheet/" },
   { name: "NASA General Mission Analysis Tool (GMAT)", use: "How real trajectories are designed", url: "https://software.nasa.gov/software/GSC-19468-1" },
   { name: "JPL Concept Maturity Levels (Wessen et al., 2013, AIAA)", use: "The step-by-step path a mission concept follows", url: "https://dataverse.jpl.nasa.gov/dataset.xhtml?persistentId=hdl:2014/44299" },
@@ -112,7 +121,27 @@ export const REAL_VEHICLES: RealVehicle[] = [
     ],
   },
   { id: "shuttle", name: "Space Shuttle", program: "Space Shuttle", heightM: 56, liftoffMassT: 2_030, liftoffThrustMN: 30.2, leoT: 27.5, blurb: "The first reusable orbital vehicle: two solid boosters and three main engines fed from an external tank. 135 flights from 1981 to 2011." },
-  { id: "sls", name: "Space Launch System Block 1", program: "Artemis", heightM: 98, liftoffMassT: 2_600, liftoffThrustMN: 39.1, leoT: 95, tliT: 27, blurb: "NASA's current heavy launcher for Artemis. Its first flight, Artemis I, launched on 16 November 2022." },
+  { id: "sls", name: "Space Launch System Block 1", program: "Artemis", heightM: 98, liftoffMassT: 2_600, liftoffThrustMN: 39.1, leoT: 95, tliT: 27, blurb: "NASA's heavy launcher for Artemis, with 8.8 million pounds (39.1 MN) of thrust at liftoff. It has flown twice: Artemis I (uncrewed, 16 November 2022) and Artemis II (crewed, 1 April 2026). 27 tonnes is what it can send toward the Moon with Orion." },
+];
+
+/** Orion, the crew spacecraft that rides on top of SLS. NASA "Orion by the numbers" and the Orion overview page. */
+export const ORION = {
+  crew: 4,
+  /** Longest mission the crew module is designed for, days. */
+  maxDays: 21,
+  grossLiftoffMassKg: 35_380,
+  /** Mass sent toward the Moon, kg. */
+  tliMassKg: 26_536,
+  stackHeightM: 20.4,
+  note: "Orion has three parts: a crew module (where the astronauts live), a European-built service module (power, propulsion, air and water) and a launch abort system.",
+};
+
+/** Where the Artemis campaign stands, from NASA's Artemis pages as read in November 2026. */
+export const ARTEMIS_CAMPAIGN: { name: string; when: string; what: string }[] = [
+  { name: "Artemis I", when: "16 November to 11 December 2022", what: "Uncrewed test of SLS and Orion. 25 days 10 hours 53 minutes, 268,563 miles (about 432,000 km) from Earth at the farthest. Orion completed 161 test objectives. Engineers studied unexpected char loss on the heat shield and changed the Artemis II re-entry path because of it." },
+  { name: "Artemis II", when: "1 to 10 April 2026", what: "The first crewed flight: four astronauts looped around the Moon in 9 days 1 hour 32 minutes, passing 4,067 miles (about 6,545 km) above the lunar surface and reaching 252,756 miles from Earth, the farthest humans have travelled. NASA reports the heat shield performed as expected, with far less char loss than Artemis I." },
+  { name: "Artemis III", when: "Planned for 2027", what: "A crewed test in low Earth orbit of rendezvous and docking between Orion and test versions of commercial lunar landers, to reduce risk before a landing." },
+  { name: "Artemis IV", when: "Planned for 2028", what: "NASA's goal for the first crewed Moon landing of the Artemis programme: the crew moves from Orion into a commercial lander for the trip to the surface." },
 ];
 
 /** Ideal (no gravity or drag loss) speed change of a stage stack, km/s, by the rocket equation. */
@@ -172,6 +201,8 @@ export interface RealMission {
   destination: string;
   facts: [string, string][];
   notice: string;
+  /** Search words for the NASA Image Library, when the mission name alone finds a poor picture. */
+  imageQuery?: string;
 }
 
 export const REAL_MISSIONS: RealMission[] = [
@@ -184,6 +215,13 @@ export const REAL_MISSIONS: RealMission[] = [
     id: "artemis1", name: "Artemis I", year: "2022", vehicle: "Space Launch System", destination: "Lunar distant retrograde orbit",
     facts: [["Launch", "16 November 2022"], ["Duration", "About 25.5 days"], ["Closest to the Moon", "About 130 km"], ["Farthest from Earth", "About 432,000 km, a record for a crew-rated capsule"]],
     notice: "An uncrewed test: engineers learn how the vehicle behaves before people fly on it.",
+    imageQuery: "Artemis I Orion Moon",
+  },
+  {
+    id: "artemis2", name: "Artemis II", year: "2026", vehicle: "Space Launch System", destination: "Crewed lunar flyby (free return)",
+    facts: [["Launch", "1 April 2026"], ["Splashdown", "10 April 2026"], ["Duration", "9 days, 1 hour, 32 minutes"], ["Crew", "4 astronauts: 3 NASA, 1 CSA"], ["Closest to the Moon", "4,067 miles (about 6,545 km) above the surface"], ["Farthest from Earth", "252,756 miles (about 406,800 km), a record for humans"]],
+    notice: "The first people to fly Orion. A free-return path swings round the Moon and heads back to Earth with no braking burn at the Moon: lunar gravity does the turning.",
+    imageQuery: "Artemis II Orion splashdown",
   },
   {
     id: "perseverance", name: "Mars 2020 Perseverance", year: "2020", vehicle: "Atlas V 541", destination: "Mars, Jezero Crater",
@@ -210,6 +248,8 @@ export interface RealParallel {
   vehicle: string;
   text: string;
   facts: [string, string][];
+  /** Search words for the NASA Image Library, when the mission name alone finds a poor picture. */
+  imageQuery?: string;
 }
 
 export const REAL_PARALLELS: Record<string, RealParallel> = {
@@ -252,6 +292,12 @@ export const REAL_PARALLELS: Record<string, RealParallel> = {
     mission: "Mars 2020 Perseverance", name: "Mars 2020 Perseverance", year: "2020", vehicle: "Atlas V 541",
     text: "Perseverance drills rock cores and seals them in tubes so that they can be returned to Earth and studied in laboratories.",
     facts: [["Landed", "18 February 2021"], ["Site", "Jezero Crater, an ancient lake"], ["Landing method", "Sky crane"]],
+  },
+  "s3-crewed-lunar-flyby": {
+    mission: "Artemis II", name: "Artemis II", year: "2026", vehicle: "SLS Block 1 and Orion",
+    text: "The first crewed Artemis flight. Four astronauts rode an SLS rocket and an Orion capsule on a free-return path round the Moon, then splashed down in the Pacific. Orion's heat shield met the atmosphere at about 39 times the speed of sound.",
+    facts: [["Launched", "1 April 2026"], ["Splashdown", "10 April 2026"], ["Duration", "9 days, 1 hour, 32 minutes"], ["Crew", "4 astronauts"], ["Closest to the Moon", "4,067 miles (about 6,545 km)"], ["Farthest from Earth", "252,756 miles (about 406,800 km)"], ["Heat shield", "186 blocks of Avcoat, peak above 4,000 °F"]],
+    imageQuery: "Artemis II Orion splashdown",
   },
   "s4-deep-space": {
     mission: "Voyager and New Horizons", name: "Voyager 1 and New Horizons", year: "1977 and 2006", vehicle: "Titan IIIE; Atlas V 551",

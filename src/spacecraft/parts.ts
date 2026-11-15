@@ -17,6 +17,8 @@ interface Base {
   slot: Slot;
   /** Spacecraft bus slots used (craft parts only). Defaults to 1. */
   slotUse?: number;
+  /** Part of a catalogue launch vehicle: never shown in the hangar palette. */
+  launcher?: boolean;
 }
 
 export interface StructurePart extends Base {

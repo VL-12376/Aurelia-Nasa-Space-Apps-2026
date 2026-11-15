@@ -10,6 +10,9 @@ import "./styles/crew.css";
 import "./styles/hq.css";
 import "./styles/fx.css";
 import "./styles/learn.css";
+import "./styles/plan.css";
+import "./styles/leaderboard.css";
+import "./styles/dialog.css";
 
 import { router } from "./core/router";
 import { startNetFlow } from "./net/flow";
@@ -29,6 +32,7 @@ import { academyScreen } from "./ui/screens/academy";
 import { missionBoard } from "./ui/screens/missionBoard";
 import { missionControl } from "./ui/screens/missionControl";
 import { debriefScreen } from "./ui/screens/debrief";
+import { leaderboardScreen } from "./ui/screens/leaderboard";
 import { solarMapScreen } from "./ui/screens/solarMap";
 import { hangarScreen } from "./ui/screens/hangar";
 import { session } from "./ui/session";
@@ -60,6 +64,7 @@ router.register("hangar", hangarScreen);
 router.register("briefing", missionBoard);
 router.register("control", missionControl);
 router.register("debrief", debriefScreen);
+router.register("leaderboard", leaderboardScreen);
 
 router.navigate("menu");
 startNetFlow();

@@ -2,6 +2,7 @@ import { ANNUAL_BUDGET_USD, defaultAllocation, type Allocation } from "../budget
 import type { RoleChoice } from "../crew/roles";
 import type { LogEntry, Outcome } from "../missions/flight";
 import { emptyDesign, type BuiltCraft, type Design } from "../spacecraft/design";
+import type { Difficulty, ScoreEntry } from "./play";
 
 /** Pure game-state types and constructors. Shared by the browser store and the multiplayer server. */
 
@@ -58,6 +59,14 @@ export interface GameState {
   completedMissions: string[];
   achievements: string[];
   experience: number;
+  /** How hard the mission trouble is, and how much a score is worth. */
+  difficulty: Difficulty;
+  /** Sandbox: unlimited funds, every part unlocked, any mission open, and no scoring or leaderboard. */
+  sandbox: boolean;
+  /** Personal best list, newest first. */
+  scores: ScoreEntry[];
+  /** The orbit and launch vehicle chosen for each mission. */
+  plans: Record<string, { orbit?: string; launcher?: string }>;
 }
 
 export const GAME_VERSION = 1;
@@ -85,5 +94,9 @@ export function newGameState(mode: GameMode, season = 1): GameState {
     completedMissions: [],
     achievements: [],
     experience: 0,
+    difficulty: "engineer",
+    sandbox: false,
+    scores: [],
+    plans: {},
   };
 }

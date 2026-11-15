@@ -1,15 +1,17 @@
-import { createServer, type Server } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { randomBytes } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
 import { DEFAULT_PORT, type ClientMsg, type ServerMsg } from "../src/net/protocol";
 import { Room } from "./room";
 import { spaceNow } from "./live";
+import { RateLimiter, ScoreStore, MAX_LIST, validateSubmission } from "./scores";
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ";
 const TICK_MS = 50;
 const MAX_MESSAGE_BYTES = 64 * 1024;
 const MAX_ROOMS = 200;
+const MAX_SCORE_BODY_BYTES = 2 * 1024;
 /** Comma-separated list of page origins allowed to connect. Empty means anyone. */
 const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 
@@ -26,6 +28,25 @@ export interface RunningServer {
   port: number;
   close(): Promise<void>;
   rooms: Map<string, Room>;
+  scores: ScoreStore;
+}
+
+export interface ServerOptions {
+  /** Where the leaderboard is saved. Omit to keep it in memory only (the tests do this). */
+  scoresFile?: string | null;
+}
+
+const CORS = { "access-control-allow-origin": "*" };
+
+function sendJson(res: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}): void {
+  res.writeHead(status, { "content-type": "application/json", ...CORS, ...headers });
+  res.end(JSON.stringify(body));
+}
+
+/** The address of the browser, behind Render's proxy if there is one. */
+function clientIp(req: IncomingMessage): string {
+  const fwd = String(req.headers["x-forwarded-for"] ?? "").split(",")[0].trim();
+  return fwd || req.socket.remoteAddress || "unknown";
 }
 
 /**
@@ -35,11 +56,73 @@ export interface RunningServer {
  * sender's role, runs the same flight simulation the single-player game uses, and pushes the
  * resulting state back to every player. Nothing in a room is decided on a client.
  */
-export function startServer(port = DEFAULT_PORT, host = "0.0.0.0"): Promise<RunningServer> {
+export function startServer(port = DEFAULT_PORT, host = "0.0.0.0", options: ServerOptions = {}): Promise<RunningServer> {
   const rooms = new Map<string, Room>();
   const conns = new Map<string, Conn>();
+  const scores = new ScoreStore({ file: options.scoresFile ?? null });
+  const submitLimit = new RateLimiter(8, 60_000);
+
+  const handleScores = (req: IncomingMessage, res: ServerResponse, url: URL) => {
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, { ...CORS, "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-allow-headers": "content-type", "access-control-max-age": "86400" });
+      res.end();
+      return;
+    }
+    if (req.method === "GET") {
+      const mission = url.searchParams.get("mission") ?? "all";
+      const limit = Math.min(Number(url.searchParams.get("limit")) || 20, MAX_LIST);
+      sendJson(res, 200, { entries: scores.list(mission, limit) }, { "cache-control": "no-cache" });
+      return;
+    }
+    if (req.method !== "POST") return sendJson(res, 405, { error: "Use GET or POST." });
+    const origin = String(req.headers.origin ?? "");
+    if (allowedOrigins.length && origin && !allowedOrigins.includes(origin)) return sendJson(res, 403, { error: "Origin not allowed." });
+    if (!submitLimit.allow(clientIp(req))) return sendJson(res, 429, { error: "Too many submissions. Try again in a minute." }, { "retry-after": "60" });
+
+    const tooBig = () => {
+      res.writeHead(413, { "content-type": "application/json", connection: "close", ...CORS });
+      res.end(JSON.stringify({ error: "That request is too large." }), () => req.destroy());
+    };
+    if (Number(req.headers["content-length"] ?? 0) > MAX_SCORE_BODY_BYTES) return tooBig();
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let rejected = false;
+    req.on("data", (c: Buffer) => {
+      if (rejected) return;
+      size += c.length;
+      if (size > MAX_SCORE_BODY_BYTES) {
+        rejected = true;
+        tooBig();
+        return;
+      }
+      chunks.push(c);
+    });
+    req.on("error", () => undefined);
+    req.on("end", () => {
+      if (rejected) return;
+      let body: unknown;
+      try {
+        body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      } catch {
+        return sendJson(res, 400, { error: "That was not valid JSON." });
+      }
+      const v = validateSubmission(body);
+      if (!v.ok) return sendJson(res, 400, { error: v.error });
+      const entry = scores.add(v.value, { verified: false });
+      sendJson(res, 201, { ok: true, entry });
+    });
+  };
 
   const http: Server = createServer((req, res) => {
+    let url: URL;
+    try {
+      url = new URL(req.url ?? "/", "http://localhost");
+    } catch {
+      res.writeHead(400);
+      res.end();
+      return;
+    }
+    if (url.pathname === "/api/scores") return handleScores(req, res, url);
     if (req.url === "/health") {
       res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*" });
       res.end(JSON.stringify({ ok: true, rooms: rooms.size, players: conns.size }));
@@ -118,7 +201,7 @@ export function startServer(port = DEFAULT_PORT, host = "0.0.0.0"): Promise<Runn
         case "create": {
           if (c.room) leave(c);
           if (rooms.size >= MAX_ROOMS) return send(c.id, { t: "error", message: "The server is busy. Try again in a few minutes." });
-          const room = new Room(newCode(), !!msg.sandbox, transport);
+          const room = new Room(newCode(), !!msg.sandbox, transport, scores);
           rooms.set(room.code, room);
           const err = issueSeat(c, room, String(msg.name ?? ""));
           if (err) {
@@ -195,12 +278,13 @@ export function startServer(port = DEFAULT_PORT, host = "0.0.0.0"): Promise<Runn
       resolve({
         port: actual,
         rooms,
+        scores,
         close: () =>
           new Promise<void>((done) => {
             clearInterval(clock);
             clearInterval(keepAlive);
             for (const c of conns.values()) c.ws.terminate();
-            wss.close(() => http.close(() => done()));
+            wss.close(() => http.close(() => void scores.flush().then(() => done())));
           }),
       });
     });
@@ -209,5 +293,9 @@ export function startServer(port = DEFAULT_PORT, host = "0.0.0.0"): Promise<Runn
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const port = Number(process.env.PORT) || DEFAULT_PORT;
-  startServer(port).then((s) => console.log(`AURELIA multiplayer server listening on ws://localhost:${s.port}`));
+  startServer(port, "0.0.0.0", { scoresFile: process.env.SCORES_FILE || "./data/scores.json" }).then((s) => {
+    console.log(`AURELIA multiplayer server listening on ws://localhost:${s.port}`);
+    // A redeploy sends SIGTERM; save the leaderboard before exiting.
+    for (const sig of ["SIGTERM", "SIGINT"] as const) process.once(sig, () => void s.close().then(() => process.exit(0)));
+  });
 }

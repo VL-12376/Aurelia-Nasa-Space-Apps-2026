@@ -74,6 +74,8 @@ export interface KinContext {
   orbitStart: number;
   /** Heliocentric target radius in AU for the cruise phase. */
   targetAu: number;
+  /** Altitude of the chosen Earth orbit, km, overriding the default low orbit. */
+  orbitAltKm?: number;
 }
 
 const LUNAR_T = hohmannState(R_EARTH + PARK_ALT, MOON_DIST, MU_E, 0).T;
@@ -132,8 +134,9 @@ export function kinematics(view: ViewKind, phaseId: string, p: number, ctx: KinC
       return { frame: "Earth", altKm: alt, velKms: 7.67 * Math.pow(p, 0.85), pos: polar(R_EARTH + alt, 0.3 * p * p), distEarthKm: R_EARTH + alt, distTargetKm: R_EARTH + alt, sunAu: 1 };
     }
     case "earth-orbit": {
-      const v = circ(MU_E, R_EARTH + LEO_ALT);
-      return { frame: "Earth", altKm: LEO_ALT, velKms: v, pos: polar(R_EARTH + LEO_ALT, leoAngle(ctx)), distEarthKm: R_EARTH + LEO_ALT, distTargetKm: R_EARTH + LEO_ALT, sunAu: 1 };
+      const oa = ctx.orbitAltKm ?? LEO_ALT;
+      const v = circ(MU_E, R_EARTH + oa);
+      return { frame: "Earth", altKm: oa, velKms: v, pos: polar(R_EARTH + oa, leoAngle(ctx, oa)), distEarthKm: R_EARTH + oa, distTargetKm: R_EARTH + oa, sunAu: 1 };
     }
     case "moon-transfer": {
       if (phaseId === "tli") {

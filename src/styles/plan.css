@@ -1,0 +1,46 @@
+.plan-opts {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 14px;
+}
+.plan-opt {
+  appearance: none;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 14px;
+  color: var(--white);
+  font: inherit;
+  background: rgba(117, 99, 181, 0.12);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.plan-opt:hover:not([disabled]) {
+  border-color: var(--lavender);
+}
+.plan-opt.sel {
+  border-color: var(--lavender);
+  background: rgba(117, 99, 181, 0.3);
+  box-shadow: var(--glow);
+}
+.plan-opt[disabled] {
+  cursor: default;
+}
+.plan-badge {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font: 600 0.58rem var(--font-mono);
+  letter-spacing: 0.12em;
+  vertical-align: middle;
+}
+.plan-badge.ok {
+  color: var(--ok);
+  border: 1px solid var(--ok);
+}
+.plan-badge.bad {
+  color: var(--bad);
+  border: 1px solid var(--bad);
+}

@@ -141,6 +141,12 @@ describe("cooperative multiplayer over real WebSockets", () => {
     expect(a.room!.game.lastFlight?.outcome.headline).toBeTruthy();
     expect(c.chat.some((l) => l.includes("Launch"))).toBe(true);
 
+    // The server computed the result itself, so it is on the leaderboard as verified.
+    const [entry] = server.scores.list("s1-first-satellite", 5);
+    expect(entry).toMatchObject({ verified: true, missionId: "s1-first-satellite", team: ["Ada", "Ben", "Cleo", "Dev"] });
+    expect(entry.name).toMatch(/^Team Ada/);
+    expect(entry.score).toBe(a.room!.game.lastFlight!.outcome.score!.total);
+
     for (const x of [a, b, c, d]) x.close();
     void ROLES;
   }, 120_000);

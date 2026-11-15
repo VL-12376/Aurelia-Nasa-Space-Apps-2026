@@ -1,4 +1,6 @@
 import { GAME_VERSION, newGameState, type GameMode, type GameState } from "./gameState";
+import type { Difficulty } from "./play";
+import { TECHS } from "../research/tech";
 import type { RoleChoice } from "../crew/roles";
 
 export type { ActiveMission, ActiveResearch, FlightReport, GameMode, GameState } from "./gameState";
@@ -59,9 +61,18 @@ class Store {
     return this.loadGame() !== null;
   }
 
-  startNewGame(mode: GameMode, season = 1, role: RoleChoice | null = null): void {
+  startNewGame(mode: GameMode, season = 1, role: RoleChoice | null = null, opts: { difficulty?: Difficulty; sandbox?: boolean } = {}): void {
     const game = newGameState(mode, season);
     game.role = role;
+    game.difficulty = opts.difficulty ?? "engineer";
+    if (opts.sandbox) {
+      // Sandbox: experiment freely. Everything is unlocked and affordable, and nothing is scored.
+      game.sandbox = true;
+      game.season = 4;
+      game.funds = 1e13;
+      game.annualBudget = 1e13;
+      game.researchedTech = TECHS.map((t) => t.id);
+    }
     this.state = { ...this.state, game };
     this.persist();
   }
@@ -80,6 +91,17 @@ class Store {
     mutator(game);
     this.state = { ...this.state, game };
     this.persist();
+  }
+
+  /** Erases the saved campaign but keeps settings such as volume. */
+  clearProgress(): void {
+    try {
+      localStorage.removeItem(SAVE_KEY);
+    } catch {
+      /* storage may be blocked; the in-memory game is still dropped */
+    }
+    this.state = { ...this.state, game: null };
+    this.emit();
   }
 
   updateSettings(patch: Partial<Settings>): void {

@@ -39,6 +39,7 @@ export const SEASONS: readonly Season[] = [
       "Study transfer trajectories and travel time",
       "Manage fuel and spacecraft resources",
       "Develop Mars orbiters and landers",
+      "Fly a crewed-style lunar flyby and bring the capsule home through the atmosphere",
       "Conduct scientific exploration of Mars",
     ],
   },

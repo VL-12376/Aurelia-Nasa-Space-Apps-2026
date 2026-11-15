@@ -1,0 +1,193 @@
+/* Leaderboard screen and the debrief's mission score panel */
+.lb-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.lb-tabs {
+  display: flex;
+  gap: var(--space-2);
+}
+.lb-tab {
+  appearance: none;
+  font-family: var(--font-brand);
+  font-size: 0.8rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--silver);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 8px 18px;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s, background 0.2s;
+}
+.lb-tab:hover,
+.lb-tab.active {
+  color: var(--white);
+  border-color: var(--lavender);
+}
+.lb-tab.active {
+  background: rgba(117, 99, 181, 0.3);
+}
+.lb-filter {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.lb-filter select,
+.sc-name input {
+  background: var(--bg-panel-solid);
+  color: var(--white);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font: inherit;
+}
+.lb-panel {
+  padding: 0;
+  overflow: hidden;
+}
+.lb-panel > .notice {
+  margin: var(--space-3);
+}
+.lb-scroll {
+  overflow-x: auto;
+}
+.lb-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.lb-table th,
+.lb-table td {
+  padding: 10px 14px;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid rgba(184, 166, 232, 0.1);
+}
+.lb-table th {
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(216, 217, 224, 0.62);
+  font-weight: 500;
+}
+.lb-table .num {
+  text-align: right;
+}
+.lb-table tbody tr:hover {
+  background: rgba(117, 99, 181, 0.12);
+}
+.lb-table tbody tr:first-child .lb-score {
+  color: var(--warn);
+}
+.lb-table tr.failed td:not(.lb-name) {
+  opacity: 0.7;
+}
+.lb-score {
+  font-size: 1.05rem;
+}
+.lb-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.lb-verified {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--ok);
+  color: var(--ok);
+}
+.lb-diff {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  color: var(--lavender);
+}
+.lb-diff.cadet {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+.lb-diff.director {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+.lb-retry {
+  padding: 0 var(--space-3) var(--space-3);
+}
+.lb-note {
+  margin-top: calc(var(--space-2) * -1);
+}
+
+/* Mission score panel in the debrief */
+.sc-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.sc-total {
+  font-family: var(--font-mono);
+  font-size: 2.6rem;
+  line-height: 1;
+  color: var(--white);
+}
+.sc-rank {
+  font-family: var(--font-brand);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--lavender);
+}
+.sc-parts {
+  display: grid;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.sc-part {
+  display: grid;
+  grid-template-columns: minmax(150px, 220px) 1fr 64px;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: 0.9rem;
+}
+.sc-part .pts {
+  text-align: right;
+  font-family: var(--font-mono);
+}
+.sc-submit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.sc-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.sc-msg.ok {
+  color: var(--ok);
+}
+.sc-msg.bad {
+  color: var(--warn);
+}
+@media (max-width: 640px) {
+  .sc-part {
+    grid-template-columns: 1fr 56px;
+  }
+  .sc-part .bar {
+    grid-column: 1 / -1;
+    order: 3;
+  }
+}

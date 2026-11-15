@@ -1,16 +1,46 @@
 import { h } from "../../core/dom";
 import { router } from "../../core/router";
 import { SEASONS } from "../../campaign/seasons";
+import { DIFFICULTIES, type Difficulty } from "../../core/play";
 import { session } from "../session";
 
 export function modeSelect(): HTMLElement {
   let selectedSeason = 1;
+  let difficulty: Difficulty = "engineer";
   const seasonButtons: HTMLButtonElement[] = [];
+  const diffButtons: HTMLButtonElement[] = [];
 
   const startSingle = () => {
     session.pendingSeason = selectedSeason;
+    session.pendingDifficulty = difficulty;
+    session.pendingSandbox = false;
     router.navigate("roles");
   };
+  const startSandbox = () => {
+    session.pendingSeason = 4;
+    session.pendingDifficulty = difficulty;
+    session.pendingSandbox = true;
+    router.navigate("roles");
+  };
+
+  const diffCards = DIFFICULTIES.map((d) => {
+    const btn = h(
+      "button",
+      {
+        class: "panel card season diff",
+        "aria-pressed": String(d.id === difficulty),
+        onclick: () => {
+          difficulty = d.id;
+          diffButtons.forEach((b, i) => b.setAttribute("aria-pressed", String(DIFFICULTIES[i].id === difficulty)));
+        },
+      },
+      h("div", { class: "num" }, `SCORE ×${d.scoreMult}`),
+      h("h3", null, d.label),
+      h("p", { class: "muted" }, d.blurb),
+    );
+    diffButtons.push(btn);
+    return btn;
+  });
 
   const seasonCards = SEASONS.map((s) => {
     const unlocked = s.id === 1;
@@ -50,6 +80,7 @@ export function modeSelect(): HTMLElement {
           h("h2", null, "Single-player"),
           h("p", { class: "muted" }, "Run an entire AURELIA exploration programme: budget, spacecraft, missions and research."),
           h("button", { class: "btn", onclick: startSingle }, "Start Campaign"),
+          h("button", { class: "btn ghost", style: { marginLeft: "8px" }, title: "Everything unlocked, unlimited funds, no scoring", onclick: startSandbox }, "Sandbox"),
         ),
         h(
           "div",
@@ -59,6 +90,9 @@ export function modeSelect(): HTMLElement {
           h("button", { class: "btn ghost", onclick: () => router.navigate("multiplayer") }, "Create or join a room"),
         ),
       ),
+      h("div", { style: { height: "24px" } }),
+      h("h3", { style: { marginBottom: "12px" } }, "Difficulty"),
+      h("div", { class: "season-row" }, ...diffCards),
       h("div", { style: { height: "24px" } }),
       h("h3", { style: { marginBottom: "12px" } }, "Campaign seasons"),
       h("div", { class: "season-row" }, ...seasonCards),

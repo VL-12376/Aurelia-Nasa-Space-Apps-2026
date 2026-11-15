@@ -123,6 +123,15 @@ export const PROFILES: Record<string, Phase[]> = {
     { kind: "ops", id: "seal", label: "Seal sample tubes", view: "mars-descent", durationS: 3_600, completes: [2], science: true, explain: "Samples are sealed so they stay clean for a future return mission." },
     { kind: "ops", id: "report", label: "Report findings", view: "mars-descent", durationS: 3_600, completes: [3], explain: "Data from the sample analysis is relayed to Earth through an orbiter or directly, taking minutes to arrive." },
   ],
+  "s3-crewed-lunar-flyby": [
+    ASCENT,
+    LEO_OPS("High Earth orbit checkout", "park", 25 * 3_600, [0], "Artemis II's crew stayed about a day in a high Earth orbit, testing Orion's systems and flying it by hand, before the burn toward the Moon. If something is wrong, it is far better to find out while still close to home."),
+    TLI([1]), MCC(60, "moon-transfer"), LUNAR_COAST,
+    { kind: "ops", id: "flyby", label: "Lunar flyby", view: "moon-orbit", durationS: 4 * 3_600, completes: [2], explain: "On a free-return path the spacecraft swings behind the Moon without braking, and lunar gravity bends it back toward Earth. Artemis II passed 4,067 miles (about 6,545 km) above the surface. A flyby is much cheaper than an orbit because there is no capture burn to pay for." },
+    MCC(40, "moon-transfer"),
+    { kind: "coast", id: "return-coast", label: "Return coast", view: "moon-transfer", durationS: 4 * DAY, explain: "Engines off again, the capsule falls back toward Earth for about four days, speeding up all the way. A small correction aims it at the narrow re-entry corridor: too steep and it burns up, too shallow and it skips off the air." },
+    { kind: "ops", id: "reentry", label: "Atmospheric re-entry", view: "earth-orbit", durationS: 1_200, completes: [3], explain: "Returning from the Moon, Artemis II's Orion hit the atmosphere at about 25,000 miles per hour (11 km/s). Its heat shield, 186 blocks of an ablative material called Avcoat, faced temperatures above 4,000 °F (2,200 °C) while the cabin stayed at about room temperature. The shield burns away slowly to carry the heat off." },
+  ],
   "s4-deep-space": [
     ASCENT, LEO_OPS("Parking orbit checkout", "park", 5_400, [], "Controllers check the spacecraft before the departure burn."),
     { kind: "burn", id: "tli", label: "Departure burn", view: "helio", deltaV: 6_300, completes: [0], explain: "A very large burn sends the probe on a path past Mars toward the outer Solar System. Real probes often use gravity assists to save fuel." },

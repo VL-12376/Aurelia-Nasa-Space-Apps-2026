@@ -9,7 +9,7 @@ import { session } from "../session";
 /** Single-player: choose the crew member you play. The other three are AI crew. */
 export function rolesScreen(): HTMLElement {
   const start = (role: (typeof ROLES)[number]["id"] | "all") => {
-    store.startNewGame("single", session.pendingSeason, role);
+    store.startNewGame("single", session.pendingSeason, role, { difficulty: session.pendingDifficulty, sandbox: session.pendingSandbox });
     router.navigate("hq");
   };
   return h(

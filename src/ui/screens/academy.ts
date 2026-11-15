@@ -5,10 +5,12 @@ import { analyse } from "../../spacecraft/design";
 import { BODY_INFO, type BodyId } from "../../science/bodies";
 import { audio } from "../../audio/engine";
 import {
-  APOLLO11_ASCENT, DELTA_V_MAP, DISCLAIMER, MARS_REFERENCE_LAUNCH, MATURITY, REAL_MISSIONS, REAL_VEHICLES, SOURCES,
+  APOLLO11_ASCENT, ARTEMIS_CAMPAIGN, DELTA_V_MAP, DISCLAIMER, MARS_REFERENCE_LAUNCH, MATURITY, ORION, REAL_MISSIONS, REAL_VEHICLES, SOURCES,
   dynamicPressureKpa, hohmannFromEarth, nextMarsWindows, stackDeltaV,
 } from "../../data/real";
+import { CAREER_LIMIT_MSV, DOSE_PRESETS, RADIATION_ENVS, daysToLimit, totalDose, type DaysByEnv, type RadiationEnv } from "../../data/radiation";
 import { gameShell } from "../layout";
+import { realImageFigure } from "../realImage";
 
 /* ------------------------------------------------------------------ */
 /* Lesson plumbing                                                     */
@@ -384,24 +386,91 @@ function lessonMissions(): HTMLElement {
   return h(
     "div",
     null,
-    h("p", null, "Every idea in AURELIA comes from a real mission. Here are five, with what to notice about each."),
+    h("p", null, `Every idea in AURELIA comes from a real mission. Here are ${REAL_MISSIONS.length}, with what to notice about each.`),
     h("div", { class: "ac-cards" },
       ...REAL_MISSIONS.map((m) =>
         h("article", { class: "ac-card" },
           h("div", { class: "mono small muted" }, `${m.year} · ${m.vehicle}`),
           h("h4", null, m.name),
           h("p", { class: "small" }, m.destination),
+          realImageFigure(m.imageQuery ?? m.name),
           h("div", { class: "ac-facts" }, ...m.facts.map(([k, v]) => fact(k, v))),
           callout("What to notice", m.notice),
         ),
       ),
     ),
+    h("h4", null, "The Artemis campaign"),
+    h("p", null, "Artemis is NASA's programme to return people to the Moon. Each flight adds one new thing to test, so the risky parts are met one at a time. This is how it stands in NASA's own pages as of November 2026."),
+    h("div", { class: "ac-cards" },
+      ...ARTEMIS_CAMPAIGN.map((a) =>
+        h("article", { class: "ac-card" }, h("div", { class: "mono small muted" }, a.when), h("h4", null, a.name), h("p", { class: "small" }, a.what)),
+      ),
+    ),
+    h("h4", null, "Orion, the crew spacecraft"),
+    h("div", { class: "ac-facts" },
+      fact("Crew", `${ORION.crew}, for up to ${ORION.maxDays} days`),
+      fact("Gross liftoff mass", `${ORION.grossLiftoffMassKg.toLocaleString("en-US")} kg`),
+      fact("Mass sent toward the Moon", `${ORION.tliMassKg.toLocaleString("en-US")} kg`),
+      fact("Height with abort tower", `${ORION.stackHeightM} m`),
+    ),
+    h("p", { class: "muted small" }, ORION.note),
     h("h4", null, "Real launch vehicles"),
     h("table", { class: "ac-table" },
       h("tr", null, h("th", null, "Vehicle"), h("th", null, "Height"), h("th", null, "Liftoff mass"), h("th", null, "Liftoff thrust"), h("th", null, "To low orbit")),
       ...REAL_VEHICLES.map((v) => h("tr", { title: v.blurb }, h("td", null, v.name), h("td", { class: "mono" }, `${v.heightM} m`), h("td", { class: "mono" }, `${v.liftoffMassT.toLocaleString("en-US")} t`), h("td", { class: "mono" }, `${v.liftoffThrustMN} MN`), h("td", { class: "mono" }, `${v.leoT} t`))),
     ),
     h("p", { class: "muted small" }, "Rounded values from NASA vehicle fact sheets. Hover a row for a description."),
+    h("p", { class: "muted small" }, "Pictures come live from the NASA Image and Video Library, each linked to its page there, and show only when you are online. Want to turn a real spacecraft around in 3D? NASA's ", h("a", { href: "https://science.nasa.gov/3d-resources/", target: "_blank", rel: "noopener noreferrer" }, "3D Resources"), " page has models; AURELIA does not include them because each one has its own terms."),
+    h("p", { class: "muted small" }, DISCLAIMER),
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Lesson 8: keeping a crew alive                                      */
+/* ------------------------------------------------------------------ */
+
+const DOSE_MAX: Record<RadiationEnv["id"], number> = { leo: 400, orion: 30, moon: 180, marsCruise: 400, marsSurface: 600 };
+
+function lessonCrewHealth(): HTMLElement {
+  const days: DaysByEnv = { leo: 182 };
+  const out = h("div", { class: "ac-out" });
+  const sliders = h("div", { class: "ac-sliders" });
+  const drawOut = () => {
+    const r = totalDose(days);
+    const pct = Math.round(r.limitShare * 100);
+    out.replaceChildren(
+      h("div", { class: "ac-total" }, h("span", null, "Total dose for this plan"), h("strong", { class: "mono" }, `${r.totalMSv.toFixed(r.totalMSv < 100 ? 1 : 0)} mSv`)),
+      h("div", { class: "bar", role: "progressbar", "aria-valuenow": Math.min(100, pct), "aria-valuemin": 0, "aria-valuemax": 100, "aria-label": "Share of NASA's career dose limit" }, h("span", { class: r.limitShare >= 1 ? "warn" : "", style: { width: `${Math.min(100, r.limitShare * 100)}%` } })),
+      h("p", { class: r.limitShare >= 1 ? "warn" : "" }, `${pct}% of NASA's ${CAREER_LIMIT_MSV} mSv career limit. ${r.limitShare === 0 ? "Move a slider to plan some days." : r.limitShare < 0.1 ? "A small share: one flight like this leaves plenty of career left." : r.limitShare < 0.5 ? "A big slice of a career in a single flight." : r.limitShare < 1 ? "Most of a career's allowance in one trip." : "More than a whole career's allowance in a single trip. This is the problem NASA's radiation researchers are working on for Mars: shorter trips, more shielding, and better storm shelters."}`),
+    );
+  };
+  const drawSliders = () => {
+    sliders.replaceChildren(...RADIATION_ENVS.map((e) => slider(e.label, 0, DOSE_MAX[e.id], 1, days[e.id] ?? 0, (n) => `${n} days`, (n) => { days[e.id] = n; drawOut(); })));
+  };
+  const preset = (p: (typeof DOSE_PRESETS)[number]) => { for (const e of RADIATION_ENVS) days[e.id] = p.days[e.id] ?? 0; drawSliders(); drawOut(); };
+  drawSliders();
+  drawOut();
+  return h(
+    "div",
+    null,
+    h("p", null, "Keeping astronauts healthy is a design requirement, just like delta-v. NASA's Human Research Program names five hazards of human spaceflight: space radiation, isolation and confinement, distance from Earth, gravity (or the lack of it) and closed, hostile environments. This lesson takes two of them: radiation, which you can calculate, and fatigue, which is a way of thinking about how crews work."),
+    h("h4", null, "Radiation: a dose budget"),
+    h("p", null, "Radiation dose is counted in millisieverts (mSv). Outside Earth's magnetic field, cosmic rays pass through a spacecraft all day, every day, so dose grows with days in space. Plan a trip by choosing days in each place, or start from a preset. The rates are real measurements."),
+    h("div", { class: "ac-chips" }, ...DOSE_PRESETS.map((p) => h("button", { class: "chip", title: p.note, onclick: () => preset(p) }, p.label))),
+    sliders,
+    out,
+    h("table", { class: "ac-table" },
+      h("tr", null, h("th", null, "Where"), h("th", null, "Measured dose rate"), h("th", null, "Days alone to reach the limit"), h("th", null, "Measured by")),
+      ...RADIATION_ENVS.map((e) => h("tr", { title: e.note }, h("td", null, e.label), h("td", { class: "mono" }, `${e.mSvPerDay.toFixed(2)} mSv/day${e.range ? ` (${e.range[0]}–${e.range[1]})` : ""}`), h("td", { class: "mono" }, Math.round(daysToLimit(e)).toLocaleString("en-US")), h("td", { class: "small" }, e.where))),
+    ),
+    callout("A simplification", "This is a plain sum of days times a measured average rate. It leaves out solar storms, the solar cycle, how much shielding a vehicle has, and the astronaut's earlier flights. NASA's limit is for effective dose, calculated with a standard body model; the measured dose-equivalent rates used here stand in for it, so treat results as a teaching estimate, not a mission plan."),
+    callout("Where the limit comes from", "NASA's standard says an astronaut's career dose from spaceflight radiation must stay below 600 mSv, the same for every age and sex. It is set so the added risk of dying from radiation-caused cancer stays at or under about 3%. NASA also follows the ALARA principle: keep every dose As Low As Reasonably Achievable."),
+    callout("Storms are a different problem", "A big solar particle event delivers a lot of dose quickly. Orion is built so that, inside its storm shelter, the dose from a large event stays at or below 150 mSv, and the radiation measured on Artemis I supported that shielding design. The Headquarters 'Space weather' card shows how active the Sun has been in the last 30 days."),
+    h("h4", null, "Fatigue and workload"),
+    h("p", null, "Radiation harms slowly; tired crews make mistakes quickly. NASA's Human Research Program lists four things that set how alert a person is: how long they slept last night, how many hours they have been awake, how groggy they are just after waking, and the time of day for their body clock. Spoil any one and performance drops. NASA's evidence reports say astronauts consistently sleep less in space than on the ground, and that too much work leads to long shifts, which cause lost sleep and a body clock out of step, which in turn cause lapses in attention."),
+    h("p", null, "For mission design this means workload is a resource to budget, like propellant: a plan with no rest, or with every task stacked into the same busy hours, spends the crew's alertness. AURELIA does not model crew fatigue or workload; it is here as a concept, and as a reason flight controllers build timelines with rest and margin."),
+    h("p", { class: "muted small" }, "Sources: NASA Human Research Program (nasa.gov/hrp) and its hazards and evidence reports; dose rates and storm-shelter figure from George et al., Nature 2024 (NASA Space Radiation Analysis Group, DLR, ESA); Mars cruise note from NASA/JPL's 2013 Curiosity release; career limit from NASA-STD-3001."),
+    h("p", { class: "muted small" }, DISCLAIMER),
   );
 }
 
@@ -424,6 +493,8 @@ export const LESSONS: Lesson[] = [
     quiz: { q: "In real mission design, what comes right before a complete point design?", options: ["Launch", "Trade space: comparing many options to see which choices matter", "Splashdown"], answer: 1, why: "Teams explore the trade space (bigger tank versus more engines, one stage versus two) before locking in one design. Jumping straight to a design risks missing a better one." } },
   { id: "missions", cml: 6, title: "Real missions", blurb: "What actually happened", build: lessonMissions,
     quiz: { q: "Why did Voyager 1 visit Jupiter and Saturn on the way out of the Solar System?", options: ["It was lost", "Gravity assists: flying past a planet can add speed without using propellant", "To take photographs only"], answer: 1, why: "A spacecraft that passes a moving planet can steal a little of the planet's orbital energy. Voyager used Jupiter and Saturn as slingshots." } },
+  { id: "crew-health", cml: 5, title: "Keeping a crew alive: radiation and fatigue", blurb: "Radiation doses and tired crews", build: lessonCrewHealth,
+    quiz: { q: "Why is a round trip to Mars so much harder on radiation than six months on the International Space Station?", options: ["Mars is much colder", "Away from Earth's magnetic field the dose rate is more than double (about 1.6 against 0.7 mSv a day), and the trip lasts far longer", "Spacecraft to Mars carry no shielding at all"], answer: 1, why: "The measured rates are about 0.68 mSv a day on the station and about 1.58 mSv a day in deep space, and a Mars mission adds months of travel on top. That is why NASA's career limit of 600 mSv is a design driver for Mars." } },
 ];
 
 export function academyScreen(): HTMLElement {

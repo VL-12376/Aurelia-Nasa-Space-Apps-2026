@@ -3,6 +3,9 @@ import { router } from "../../core/router";
 import { store } from "../../core/store";
 import { BUDGET_CATEGORIES, formatUsd, trySpend, type BudgetCategoryId } from "../../budget/budget";
 import { MISSIONS, missionsForSeason } from "../../missions/missions";
+import { capacityCheck } from "../../launch/vehicles";
+import { planDesign, resolvePlan } from "../../missions/plan";
+import { dataBudget, fmtDays, fmtGb, lifetime, powerMarginPct } from "../../spacecraft/resources";
 import { TECHS } from "../../research/tech";
 import { HangarScene } from "../../scene/hangar";
 import {
@@ -15,6 +18,9 @@ import { advise, unstagedDeltaV, workedExample } from "../../spacecraft/advisor"
 import { nextBuildStep, type CoachStep } from "../../spacecraft/coach";
 import { speak } from "../../audio/voice";
 import { TEMPLATES } from "../../spacecraft/templates";
+import { decodeDesign, encodeDesign } from "../../spacecraft/designCode";
+import { compareDesigns } from "../../spacecraft/compare";
+import { openDialog } from "../dialog";
 import { gameShell } from "../layout";
 import { session } from "../session";
 import { aiContribute } from "../../crew/ai";
@@ -246,11 +252,12 @@ export function hangarScreen(): HTMLElement {
   const systems = h("div", { class: "h-panel" });
   const budget = h("div", { class: "h-panel" });
   const mission = h("div", { class: "h-panel" });
+  const resources = h("div", { class: "h-panel" });
   const fleet = h("div", { class: "h-panel" });
   const advisor = h("div", { class: "h-panel" });
   const learn = h("div", { class: "h-panel" });
   const coachPanel = h("div", { class: "h-panel coach", role: "region", "aria-label": "Build coach" });
-  const right = h("div", { class: "h-right" }, hud, coachPanel, crewPanel, advisor, stages, systems, budget, mission, learn, fleet);
+  const right = h("div", { class: "h-right" }, hud, coachPanel, crewPanel, advisor, stages, systems, resources, budget, mission, learn, fleet);
 
   function bigStat(label: string, value: string, tone = "", term?: string): HTMLElement {
     const g = term ? GLOSSARY[term] : null;
@@ -328,6 +335,41 @@ export function hangarScreen(): HTMLElement {
     );
   }
 
+  /** The six resources a mission manager balances, for the mission and plan currently chosen. */
+  function renderResources(): void {
+    const g = game();
+    const m = MISSIONS.find((x) => x.id === missionId) ?? null;
+    if (!m) {
+      resources.replaceChildren(h("h4", null, "Mission resources"), h("p", { class: "muted small" }, "Choose a mission to see how the design fares."));
+      return;
+    }
+    const plan = remote ? undefined : g.plans?.[m.id];
+    const r = resolvePlan(m, plan);
+    const flown = planDesign(design, r);
+    const s = analyse(flown);
+    const requiredDv = m.requiredDeltaV + r.extraDv;
+    const data = dataBudget(flown, m, r.orbit);
+    const life = lifetime(s, m, r.orbit, requiredDv);
+    const power = powerMarginPct(s);
+    const cap = r.launcher ? capacityCheck(r.launcher, m, r.orbit, s.payloadMass) : null;
+    const tone = (ok: boolean, warn = false) => (ok ? "" : warn ? "warn" : "bad");
+    resources.replaceChildren(
+      h("h4", null, "Mission resources"),
+      h("p", { class: "muted small" }, `${m.name} · ${r.orbit.label} · ${r.launcher ? r.launcher.name : "your own rocket"}`),
+      kv("Mass", cap ? `${fmtMass(s.payloadMass)} of ${fmtMass(cap.capacityKg ?? 0)} the launcher can lift` : `${fmtMass(s.payloadMass)} spacecraft, ${m.minPayloadKg} kg needed`),
+      meter(cap?.capacityKg ? (s.payloadMass / cap.capacityKg) * 100 : (s.payloadMass / Math.max(m.minPayloadKg, 1)) * 100, "Mass", cap ? tone(cap.ok) : tone(s.payloadMass >= m.minPayloadKg)),
+      kv("Power", s.powerDraw > 0 ? `${fmtPower(s.powerGen)} made, ${fmtPower(s.powerDraw)} used (${power > 1000 ? "over 1000" : power.toFixed(0)}% margin)` : "No load yet"),
+      meter(s.powerGen ? (s.powerDraw / s.powerGen) * 100 : 0, "Power", tone(power >= 10, power >= 0)),
+      kv("Communications", data.linkMbps > 0 ? `${data.linkMbps < 1 ? `${(data.linkMbps * 1000).toFixed(0)} kbit/s` : `${data.linkMbps.toFixed(1)} Mbit/s`} link, about ${Math.round(data.contactMinPerDay)} min/day of contact` : "No link reaches Earth from here"),
+      kv("Data", data.instrumentMbps > 0 ? `${fmtGb(data.generatedGbPerDay)}/day recorded, ${fmtGb(data.downlinkGbPerDay)}/day sent (${Math.round(data.returnPct)}%)` : "No instruments fitted"),
+      meter(data.returnPct, "Data returned", tone(data.returnPct >= 70 || data.instrumentMbps === 0, data.returnPct >= 40)),
+      kv("Mission lifetime", `${fmtDays(life.days)} of ${fmtDays(life.neededDays)} wanted`),
+      meter((life.days / Math.max(life.neededDays, 1)) * 100, "Lifetime", tone(life.days >= life.neededDays, life.days >= life.neededDays * 0.6)),
+      kv("Budget", `${formatUsd(s.cost)} design · ${g.sandbox ? "unlimited funds" : `${formatUsd(g.funds)} available`}`),
+      h("p", { class: "muted small" }, "Data rates and lifetimes are game models of typical values. Change the orbit or launch vehicle in the mission briefing."),
+    );
+  }
+
   const kv = (k: string, v: string) => h("div", { class: "kv" }, h("span", { class: "k" }, k), h("span", { class: "v mono" }, v));
 
   function renderBudget(): void {
@@ -362,7 +404,7 @@ export function hangarScreen(): HTMLElement {
     const failed = checks.filter((c) => !c.ok).length;
     const select = h(
       "select",
-      { "aria-label": "Target mission", disabled: remote && !acts("controller"), title: remote && !acts("controller") ? "The Mission Controller chooses the mission" : undefined, onchange: (e: Event) => { missionId = (e.target as HTMLSelectElement).value; session.selectedMissionId = missionId; if (remote) mp.send({ t: "mission", id: missionId }); renderMission(); renderAdvisor(); renderCrew(); } },
+      { "aria-label": "Target mission", disabled: remote && !acts("controller"), title: remote && !acts("controller") ? "The Mission Controller chooses the mission" : undefined, onchange: (e: Event) => { missionId = (e.target as HTMLSelectElement).value; session.selectedMissionId = missionId; if (remote) mp.send({ t: "mission", id: missionId }); renderMission(); renderResources(); renderAdvisor(); renderCrew(); } },
       ...list.map((x) => h("option", { value: x.id, selected: x.id === m.id }, x.name)),
     );
     mission.replaceChildren(
@@ -593,6 +635,119 @@ export function hangarScreen(): HTMLElement {
     h("option", { value: "" }, "Starter designs…"),
     ...TEMPLATES.map((t) => h("option", { value: t.id, title: t.blurb }, t.name)),
   );
+  const missingResearch = (d: Design): string[] => [...new Set(d.parts.map((r) => PART_BY_ID[r.partId]).filter((p) => !isUnlocked(p, game().researchedTech)).map((p) => techName(p.tech)))];
+
+  function openShare(): void {
+    const code = encodeDesign(design, { missionId });
+    const box = h("textarea", { class: "dlg-code", readonly: true, rows: 4, "aria-label": "Design code", onfocus: (e: Event) => (e.target as HTMLTextAreaElement).select() });
+    box.value = code;
+    const input = h("input", { type: "text", "aria-label": "Paste a design code",     placeholder: "AUR1-…", autocomplete: "off", spellcheck: "false" });
+    const copy = async () => {
+      try {
+        await navigator.clipboard.writeText(code);
+      } catch {
+        box.focus();
+        box.select();
+        if (!document.execCommand("copy")) return toast("Select the code and copy it with Ctrl+C.");
+      }
+      toast("Design code copied.");
+    };
+    const load = () => {
+      const res = decodeDesign(input.value);
+      if (!res.ok) return toast(res.reason);
+      const locked = missingResearch(res.design);
+      if (locked.length) return toast(`Research needed first: ${locked.join(", ")}.`);
+      selected = null;
+      if (commit(res.design, undefined, true)) {
+        toast(`Loaded: ${res.design.name}`);
+        dlg.close();
+      }
+    };
+    const dlg = openDialog({
+      title: "Share this design",
+      className: "wide",
+      body: h(
+        "div",
+        null,
+        h("p", { class: "muted small" }, "Send this code to a friend. Anyone with the game can paste it to load your design."),
+        box,
+        h("div", { class: "dlg-row" }, h("button", { class: "btn small", type: "button", onclick: copy }, "Copy code")),
+        h("h4", { class: "dlg-section" }, "Import a code"),
+        h("div", { class: "dlg-row", style: { marginTop: "0" } }, input, h("button", { class: "btn small", type: "button", onclick: load }, "Load design")),
+        h("p", { class: "muted small" }, "Loading replaces your current design. You can undo it with Ctrl+Z."),
+      ),
+      actions: [{ label: "Close", kind: "ghost", default: true, onClick: () => undefined }],
+    });
+  }
+
+  function openCompare(): void {
+    const left = { name: design.name, stats: analyse(design) };
+    const fleet = game().fleet;
+    const result = h("div");
+    const codeInput = h("input", { type: "text", "aria-label": "Paste a design code to compare",     placeholder: "AUR1-…", autocomplete: "off", spellcheck: "false" });
+    const codeRow = h("div", { class: "dlg-row", hidden: true }, codeInput, h("button", { class: "btn small", type: "button", onclick: () => show() }, "Compare"));
+    const choose = h(
+      "select",
+      { "aria-label": "Design to compare against", onchange: () => show() },
+      h("option", { value: "" }, "Choose a design…"),
+      ...(fleet.length ? [h("optgroup", { label: "Your built spacecraft" }, ...fleet.map((c) => h("option", { value: `fleet:${c.id}` }, c.name)))] : []),
+      h("optgroup", { label: "Starter designs" }, ...TEMPLATES.map((t) => h("option", { value: `tpl:${t.id}` }, t.name))),
+      h("option", { value: "code" }, "A pasted code…"),
+    );
+
+    function pickRight(): { name: string; design: Design } | string | null {
+      const v = choose.value;
+      if (v.startsWith("fleet:")) {
+        const c = fleet.find((x) => x.id === v.slice(6));
+        return c ? { name: c.name, design: { name: c.name, parts: c.parts } } : null;
+      }
+      if (v.startsWith("tpl:")) {
+        const t = TEMPLATES.find((x) => x.id === v.slice(4));
+        return t ? { name: t.design.name, design: t.design } : null;
+      }
+      if (v === "code") {
+        if (!codeInput.value.trim()) return null;
+        const res = decodeDesign(codeInput.value);
+        return res.ok ? { name: res.design.name, design: res.design } : res.reason;
+      }
+      return null;
+    }
+
+    function show(): void {
+      codeRow.hidden = choose.value !== "code";
+      const right = pickRight();
+      if (typeof right === "string") return fill(result, h("p", { class: "warn small" }, right));
+      if (!right) return fill(result, h("p", { class: "muted small" }, "Pick a second design to see how the two trade off."));
+      const cmp = compareDesigns(left, { name: right.name, stats: analyse(right.design) });
+      const cell = (text: string, win: boolean) => h("td", { class: win ? "better" : "" }, text);
+      fill(
+        result,
+        h(
+          "table",
+          { class: "cmp-table" },
+          h("thead", null, h("tr", null, h("th", { scope: "col" }, "Measure"), h("th", { scope: "col" }, left.name), h("th", { scope: "col" }, right.name))),
+          h(
+            "tbody",
+            null,
+            ...cmp.rows.map((r) =>
+              h("tr", null, h("td", null, r.label, r.note ? h("span", { class: "cmp-note" }, r.note) : null), cell(r.a, r.better === "a"), cell(r.b, r.better === "b")),
+            ),
+          ),
+        ),
+        h("h4", { class: "dlg-section" }, "Trade-offs"),
+        h("ul", { class: "cmp-summary" }, ...cmp.summary.map((s) => h("li", null, s))),
+      );
+    }
+
+    show();
+    openDialog({
+      title: "Compare designs",
+      className: "wide",
+      body: h("div", null, h("p", { class: "muted small" }, `Your current design, ${design.name}, is on the left. Green marks the stronger side for that measure; it is not the whole story.`), h("div", { class: "dlg-row" }, choose), codeRow, result),
+      actions: [{ label: "Close", kind: "ghost", default: true, onClick: () => undefined }],
+    });
+  }
+
   const tools = h(
     "div",
     { class: "h-tools", role: "toolbar", "aria-label": "Hangar tools" },
@@ -603,6 +758,8 @@ export function hangarScreen(): HTMLElement {
     toggleBtn("Turntable", "Slowly rotate the camera", (on) => { spin = on; scene.setAutoRotate(spin); }),
     toggleBtn("Static fire", "Light the engines on the pad", (on) => { fire = on; scene.setFire(fire); }),
     h("button", { class: "h-tool", title: "Reset camera", onclick: () => scene.resetCamera() }, "Recentre"),
+    h("button", { class: "h-tool", title: "Get a code you can send to a friend, or load one", onclick: openShare }, "Share"),
+    h("button", { class: "h-tool", title: "Compare this design with another", onclick: openCompare }, "Compare"),
   );
 
   /* ----- crew ----- */
@@ -664,6 +821,7 @@ export function hangarScreen(): HTMLElement {
     renderSystems();
     renderBudget();
     renderMission();
+    renderResources();
     renderLearn();
     renderFleet();
     renderStrip();

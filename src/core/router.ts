@@ -15,7 +15,8 @@ export type ScreenId =
   | "debrief"
   | "research"
   | "profile"
-  | "academy";
+  | "academy"
+  | "leaderboard";
 
 export type ScreenFactory = () => HTMLElement;
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { approachesFromCad, moonFromHorizons, parseHorizons } from "./live";
+import { approachesFromCad, marsFromHorizons, moonFromHorizons, parseHorizons } from "./live";
 
 // Trimmed from real responses of NASA/JPL Horizons and the SBDB Close-Approach API.
 const HORIZONS_RESULT = `*******
@@ -7,6 +7,13 @@ $$SOE
 2461359.500000000 = A.D. 2026-Nov-15 00:00:00.0000 TDB
  X = 1.707836373659629E+05 Y =-3.665281618669272E+05 Z =-1.768800727209449E+04
  VX= 8.684960534651658E-01 VY= 4.191464558725506E-01 VZ= 7.418379185303070E-02
+$$EOE`;
+
+const MARS_RESULT = `*******
+$$SOE
+2461359.634027778 = A.D. 2026-Nov-15 03:13:00.0000 TDB
+ X =-1.610426127859143E+08 Y = 1.127337038690546E+08 Z = 6.561350200388342E+06
+ VX= 1.851174772695988E+00 VY=-2.312530875231395E+01 VZ= 4.411571415379285E-01
 $$EOE`;
 
 const CAD_JSON = {
@@ -30,6 +37,19 @@ describe("live NASA/JPL data parsing", () => {
 
   it("returns nothing for text that is not a vector table", () => {
     expect(parseHorizons("No ephemeris for target")).toBeNull();
+    expect(marsFromHorizons("No ephemeris for target")).toBeNull();
+  });
+
+  it("turns the Mars vector into an Earth distance and a one-way light time", () => {
+    const mars = marsFromHorizons(MARS_RESULT)!;
+    // Mars is between about 54.6 and 401 million km from Earth, so radio takes about 3 to 22 minutes one way.
+    expect(mars.distanceKm).toBeGreaterThan(54_000_000);
+    expect(mars.distanceKm).toBeLessThan(402_000_000);
+    expect(mars.distanceKm).toBeCloseTo(196_700_000, -5);
+    expect(mars.lightTimeS).toBeCloseTo(mars.distanceKm / 299_792.458, 6);
+    expect(mars.lightTimeS / 60).toBeGreaterThan(3);
+    expect(mars.lightTimeS / 60).toBeLessThan(23);
+    expect(mars.epoch).toContain("2026-Nov-15");
   });
 
   it("converts close approaches to km, lunar distances and a plausible size", () => {

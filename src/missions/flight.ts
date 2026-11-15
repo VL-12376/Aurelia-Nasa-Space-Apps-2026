@@ -1,9 +1,24 @@
+import { capacityCheck } from "../launch/vehicles";
 import { G0 } from "../physics/orbital";
 import { analyse, ascentPenalty, bus, part, type Design, type Stats, type Target } from "../spacecraft/design";
 import type { SciencePart } from "../spacecraft/parts";
+import { dataBudget, lifetime, powerMarginPct } from "../spacecraft/resources";
+import { DIFFICULTY_BY_ID, type Difficulty, type DifficultyDef } from "../core/play";
 import type { MissionDef } from "./missions";
 import { kinematics, lightDelaySeconds, sunFactor, type Frame, type Kin, type KinContext } from "./kinematics";
-import { profileFor, type BurnPhase, type Phase, type ViewKind } from "./profiles";
+import { phasesFor, planDesign, resolvePlan, type MissionPlan, type ResolvedPlan } from "./plan";
+import type { BurnPhase, Phase, ViewKind } from "./profiles";
+
+/** Everything a flight needs beyond the design and the mission: the player's plan, difficulty and live conditions. */
+export interface FlightContext {
+  plan?: MissionPlan;
+  difficulty?: Difficulty;
+  sandbox?: boolean;
+  /** Real recent solar activity from NASA DONKI: 0.5 (quiet) to 2 (very active). */
+  solarActivity?: number;
+  /** A short description of the latest real flare, shown in the solar flare event. */
+  latestFlare?: string;
+}
 
 export type Tone = "info" | "ok" | "warn" | "bad";
 export interface LogEntry {
@@ -125,6 +140,12 @@ export interface Outcome {
   lessons: string[];
   /** Every unplanned event and how the crew responded. */
   events?: { title: string; choice: string; text: string; tone: Tone }[];
+  /** Set when the flight is applied to the save: the final score and how it was earned. */
+  score?: { total: number; parts: { label: string; points: number; max: number }[]; rank: string };
+  /** Resource results, so the debrief and score can judge data, lifetime, mass and power management. */
+  resources?: { dataReturnPct: number; lifetimeDays: number; lifetimeNeededDays: number; massMarginPct: number; powerMarginPct: number };
+  /** The plan this flight flew: orbit, launcher and difficulty. */
+  plan?: { orbit: string; launcher: string; difficulty: "cadet" | "engineer" | "director"; sandbox: boolean };
 }
 
 /** What the mission-control screen needs from a flight, whether it runs locally or on a server. */
@@ -325,11 +346,11 @@ const EVENTS: EventDef[] = [
     at: 0.55,
     precursor: () => "space-weather watch: a large sunspot group has just erupted. Energetic particles are expected within the hour.",
     applies: (p, f) => (p.kind === "coast" || p.kind === "ops") && p.view !== "ascent" && f.t > 4_000 && !f.fired("solar-flare"),
-    chance: (p) => (p.kind === "coast" && p.durationS > 86_400 ? 0.2 : 0.08),
-    build: () => ({
+    chance: (p, f) => (p.kind === "coast" && p.durationS > 86_400 ? 0.2 : 0.08) * f.solarActivity(),
+    build: (_p, f) => ({
       eventId: "solar-flare",
       title: "Solar flare warning",
-      body: "A burst of high-energy particles from the Sun is on its way. It can damage electronics and degrade instruments. Mission control has a few minutes to react.",
+      body: `${f.latestFlare() ? `Real space weather right now: ${f.latestFlare()} (NASA DONKI). ` : ""}A burst of high-energy particles from the Sun is on its way. It can damage electronics and degrade instruments. Mission control has a few minutes to react.`,
       options: [
         { id: "safe", label: "Enter safe mode", hint: "Instruments off, antennas pointed home. Costs a little time." },
         { id: "operate", label: "Stay fully operational", hint: "30% chance of instrument damage." },
@@ -530,11 +551,11 @@ const EVENTS: EventDef[] = [
     at: 0.6,
     precursor: () => "the onboard recorder is over 80% full and filling faster than the radio can empty it.",
     applies: (p) => p.kind === "ops" && !!p.science,
-    chance: () => 0.2,
-    build: () => ({
+    chance: (_p, f) => 0.2 * (1 + (100 - f.dataReturnPct()) / 100),
+    build: (_p, f) => ({
       eventId: "data-full",
       title: "Data storage nearly full",
-      body: "The instruments are producing data faster than the radio can send it to Earth, and the onboard recorder is almost full. A spacecraft can only keep what it can store, and only deliver what it can transmit.",
+      body: `The instruments are producing data faster than the radio can send it to Earth, and the onboard recorder is almost full. Only about ${Math.round(f.dataReturnPct())}% of what this spacecraft records can reach Earth. A spacecraft can only keep what it can store, and only deliver what it can transmit.`,
       options: [
         { id: "downlink", label: "Pause science and downlink", hint: "Costs about 2 hours. Nothing is lost." },
         { id: "prioritise", label: "Drop the lowest-value data", hint: "Keeps observing, but about 10% of the science return is lost." },
@@ -593,12 +614,20 @@ export class Flight {
   private targetAu: number;
   private lastKin: Kin;
   private browned = false;
+  private readonly plan: ResolvedPlan;
+  private readonly ctx: FlightContext;
+  private readonly diff: DifficultyDef;
+  private readonly requiredDv: number;
 
-  constructor(design: Design, mission: MissionDef, seed: number) {
-    this.design = design;
+  constructor(design: Design, mission: MissionDef, seed: number, ctx: FlightContext = {}) {
+    this.ctx = ctx;
+    this.diff = DIFFICULTY_BY_ID[ctx.difficulty ?? "engineer"];
+    this.plan = resolvePlan(mission, ctx.plan);
+    this.design = planDesign(design, this.plan);
     this.mission = mission;
-    this.stats = analyse(design);
-    this.phases = profileFor(mission);
+    this.stats = analyse(this.design);
+    this.phases = phasesFor(mission, this.plan);
+    this.requiredDv = mission.requiredDeltaV + this.plan.extraDv;
     this.rng = mulberry32(seed);
     this.craftMass = this.stats.payloadMass;
     this.stages = this.stats.stages
@@ -714,7 +743,19 @@ export class Flight {
   }
 
   private kctx(): KinContext {
-    return { missionId: this.mission.id, met: this.t, orbitStart: this.orbitStart, targetAu: this.targetAu };
+    return { missionId: this.mission.id, met: this.t, orbitStart: this.orbitStart, targetAu: this.targetAu, orbitAltKm: this.plan.orbit.body === "earth" ? this.plan.orbit.altKm : undefined };
+  }
+
+  /** Real recent flare text for the solar flare event, and the activity factor that scales its odds. */
+  solarActivity(): number {
+    return this.ctx.solarActivity ?? 1;
+  }
+  latestFlare(): string | undefined {
+    return this.ctx.latestFlare;
+  }
+  /** Share of recorded science data that can reach Earth, 0 to 100, for this design and orbit. */
+  dataReturnPct(): number {
+    return dataBudget(this.design, this.mission, this.plan.orbit).returnPct;
   }
 
   private planBurn(need: number): { segments: Segment[]; shortfall: number } {
@@ -771,7 +812,7 @@ export class Flight {
     // Roll the dice for events once, at the start of each phase. Earlier trouble makes more trouble likelier.
     this.schedule = [];
     for (const def of EVENTS) {
-      if (def.applies(p, this) && this.rng() < Math.min(0.95, def.chance(p, this) * (1 + this.stress))) this.schedule.push({ def, at: def.at, warned: false });
+      if (def.applies(p, this) && this.rng() < Math.min(0.95, def.chance(p, this) * (1 + this.stress) * this.diff.eventMult)) this.schedule.push({ def, at: def.at, warned: false });
     }
     this.schedule.sort((a, b) => a.at - b.at);
   }
@@ -887,7 +928,8 @@ export class Flight {
   private raise(def: EventDef): void {
     const p = this.phases[this.phaseIdx];
     this.firedEvents.add(def.id);
-    this.pending = { ...def.build(p, this), ...EVENT_TIMING[def.id] };
+    const timing = EVENT_TIMING[def.id];
+    this.pending = { ...def.build(p, this), timeS: timing ? Math.max(5, Math.round(timing.timeS * this.diff.timerMult)) : undefined, fallback: timing?.fallback };
     const rtt = this.rttS();
     if (rtt > 60) {
       const mins = rtt / 120;
@@ -1005,7 +1047,12 @@ export class Flight {
     const target = 40 + (m.difficulty - 2) * 20;
     const applicable = this.sciencePhases > 0;
     const phaseShare = applicable ? this.scienceDone / this.sciencePhases : 1;
-    const scienceFrac = applicable ? Math.min(1, (fitted * this.scienceUp * phaseShare) / target) : 1;
+    // Science that cannot reach Earth is science lost: the data return limits how much of the recorded value counts.
+    const dataPct = dataBudget(this.design, m, this.plan.orbit).returnPct;
+    const dataFactor = applicable ? 0.4 + 0.6 * (dataPct / 100) : 1;
+    const scienceFrac = applicable ? Math.min(1, (fitted * this.scienceUp * phaseShare * dataFactor) / target) : 1;
+    const life = lifetime(this.stats, m, this.plan.orbit, this.requiredDv);
+    const lifeFactor = life.days >= life.neededDays ? 1 : 0.85 + 0.15 * (life.days / life.neededDays);
 
     const budget = this.phases.reduce((n, p) => (p.kind === "burn" ? n + p.deltaV : n), 0);
     const marginPct = this.stats.deltaV > 0 ? ((this.stats.deltaV - budget - this.eventDv) / budget) * 100 : 0;
@@ -1015,7 +1062,7 @@ export class Flight {
     const factor = result === "success" ? 1 : result === "partial" ? 0.4 + 0.4 * (done / total) : 0;
     const sciFactor = applicable ? 0.6 + 0.4 * scienceFrac : 1;
     const bonus = result === "success" && marginPct >= 10 ? 0.05 : 0;
-    const funds = Math.round(m.rewardUsd * (factor * sciFactor + bonus));
+    const funds = Math.round(m.rewardUsd * (factor * sciFactor + bonus) * lifeFactor);
     const rep = result === "success" ? Math.round(m.reputationReward * (0.8 + 0.2 * scienceFrac)) : result === "partial" ? Math.round(m.reputationReward * 0.4) : -Math.max(3, Math.round(m.reputationReward * 0.4));
     const rp = result === "failed" ? 0 : Math.round(((applicable ? 50 + scienceFrac * 50 : 60) * m.difficulty * 0.6) * (result === "partial" ? 0.6 : 1));
     const xp = result === "success" ? m.difficulty * 20 : result === "partial" ? m.difficulty * 10 : 5;
@@ -1024,9 +1071,13 @@ export class Flight {
     if (alive && applicable && this.scienceUp < 0.9) this.lessons.push("Instrument problems reduced the science return. Spare power and a second antenna are the cheapest ways to protect it.");
     if (alive && applicable && fitted < target) this.lessons.push(`The instruments fitted were worth ${fitted} science points against a target of ${target}. A richer payload would raise the reward, at the cost of mass and power.`);
     if (this.stats.stages[0].engines === 1 && !this.lessons.some((l) => l.includes("single"))) this.lessons.push("The booster used a single engine. Clusters of engines can survive losing one.");
+    if (alive && applicable && dataPct < 70) this.lessons.push(`Only about ${Math.round(dataPct)}% of the recorded data could be sent to Earth, which cut the science value. A bigger antenna, an orbit with longer ground contact, or fewer data-hungry instruments would have helped.`);
+    if (alive && life.days < life.neededDays) this.lessons.push(`The spacecraft was expected to last about ${Math.round(life.days)} days against ${life.neededDays} wanted (limited by ${life.limiter}). Spare delta-v keeps an orbit, and spare solar power keeps up with ageing panels.`);
+    if (this.plan.launcher && result !== "failed") this.lessons.push(`Flying on ${this.plan.launcher.name} cost ${(this.plan.launchCostUsd / 1e6).toFixed(0)}M. A cheaper launcher saves money only if it still has the capacity and delta-v for the mission.`);
     if (!this.lessons.length) this.lessons.push("Everything went to plan. Staging, margin and the right hardware did their jobs.");
 
     const headline = result === "success" ? "Mission accomplished" : result === "partial" ? "Partial success" : "Mission lost";
+    const cap = this.plan.launcher ? capacityCheck(this.plan.launcher, m, this.plan.orbit, this.stats.payloadMass).capacityKg : null;
     this.outcome = {
       result, headline, failReason: this.failReason,
       objectives: m.objectives.map((text, i) => ({ text, done: this.objectives[i] })),
@@ -1036,6 +1087,12 @@ export class Flight {
       fundsEarned: funds, reputation: rep, researchPoints: rp, experience: xp,
       lessons: [...new Set(this.lessons)].slice(0, 8),
       events: this.record,
+      resources: {
+        dataReturnPct: Math.round(dataPct), lifetimeDays: life.days, lifetimeNeededDays: life.neededDays,
+        massMarginPct: cap ? Math.round(((cap - this.stats.payloadMass) / cap) * 100) : Math.round(marginPct),
+        powerMarginPct: Math.round(powerMarginPct(this.stats)),
+      },
+      plan: { orbit: this.plan.orbit.label, launcher: this.plan.launcher?.name ?? "Own rocket", difficulty: this.ctx.difficulty ?? "engineer", sandbox: !!this.ctx.sandbox },
     };
   }
 

@@ -13,11 +13,12 @@ const NAV: { id: ScreenId; label: string }[] = [
   { id: "hangar", label: "Hangar" },
   { id: "research", label: "Research" },
   { id: "academy", label: "Academy" },
+  { id: "leaderboard", label: "Leaderboard" },
   { id: "profile", label: "Profile" },
 ];
 
 /** In a shared room the campaign lives on the server, so only the screens that read it are offered. */
-const MP_NAV: ScreenId[] = ["map", "briefing", "hangar", "academy"];
+const MP_NAV: ScreenId[] = ["map", "briefing", "hangar", "academy", "leaderboard"];
 
 /** Wraps a screen's content with the in-game top bar and navigation. */
 export function gameShell(active: ScreenId, content: HTMLElement, opts: { fill?: boolean } = {}): HTMLElement {

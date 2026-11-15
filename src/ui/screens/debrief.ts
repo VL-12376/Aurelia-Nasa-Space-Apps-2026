@@ -1,10 +1,16 @@
 import { h } from "../../core/dom";
+import { DIFFICULTY_BY_ID } from "../../core/play";
+import type { FlightReport } from "../../core/gameState";
 import { router } from "../../core/router";
 import { store } from "../../core/store";
 import { formatUsd } from "../../budget/budget";
 import { MISSIONS } from "../../missions/missions";
 import { gameShell } from "../layout";
+import { submitScore } from "../../net/leaderboard";
 import { mp } from "../../net/session";
+
+/** Flights already sent to the global leaderboard, so one flight is submitted once. */
+const submitted = new Set<string>();
 
 const fmtT = (s: number) => {
   const d = Math.floor(s / 86_400);
@@ -51,6 +57,7 @@ export function debriefScreen(): HTMLElement {
       stat("Research points", `+${o.researchPoints}`),
       stat("Experience", `+${o.experience}`),
     ),
+    scorePanel(rep, !!remote, !!g.sandbox),
     h(
       "div",
       { class: "grid cols-2" },
@@ -67,6 +74,20 @@ export function debriefScreen(): HTMLElement {
         kv("Operations cost", formatUsd(mission.costUsd)),
       ),
     ),
+    o.plan && o.resources
+      ? h(
+          "div",
+          { class: "panel hud" },
+          h("h3", null, "Mission plan and resources"),
+          kv("Orbit", o.plan.orbit),
+          kv("Launch vehicle", o.plan.launcher),
+          kv("Difficulty", `${DIFFICULTY_BY_ID[o.plan.difficulty].label}${o.plan.sandbox ? " (sandbox)" : ""}`),
+          kv("Data returned to Earth", `${o.resources.dataReturnPct}%`),
+          kv("Lifetime", `${o.resources.lifetimeDays} days of ${o.resources.lifetimeNeededDays} wanted`),
+          kv("Mass margin", `${o.resources.massMarginPct}%`),
+          kv("Power margin", `${o.resources.powerMarginPct}%`),
+        )
+      : null,
     o.events?.length
       ? h(
           "div",
@@ -79,16 +100,88 @@ export function debriefScreen(): HTMLElement {
     o.result !== "success" ? h("div", { class: "panel hud" }, h("h3", null, "What to change"), h("ul", { class: "lessons" }, ...fix.map((l) => h("li", null, l)))) : null,
     h("details", { class: "panel hud" }, h("summary", null, "Full mission log"), h("ul", { class: "mc-log full" }, ...rep.log.map((l) => h("li", { class: l.tone }, h("span", { class: "mono muted" }, fmtT(l.t)), h("span", null, l.text))))),
     remote
-      ? h("div", { class: "mb-actions" }, mp.isHost ? h("button", { class: "btn", onclick: () => mp.send({ t: "toHangar" }) }, "Back to the hangar for the next mission") : h("span", { class: "muted small" }, "Waiting for the host to return the crew to the hangar."), h("button", { class: "btn ghost small", onclick: () => { mp.leave(); router.navigate("menu"); } }, "Leave room"))
+      ? h("div", { class: "mb-actions" }, mp.isHost ? h("button", { class: "btn", onclick: () => mp.send({ t: "toHangar" }) }, "Back to the hangar for the next mission") : h("span", { class: "muted small" }, "Waiting for the host to return the crew to the hangar."), h("button", { class: "btn ghost", onclick: () => router.navigate("leaderboard") }, "View leaderboard"), h("button", { class: "btn ghost small", onclick: () => { mp.leave(); router.navigate("menu"); } }, "Leave room"))
       : h(
           "div",
           { class: "mb-actions" },
           h("button", { class: "btn", onclick: () => router.navigate("hq") }, "Return to headquarters"),
           h("button", { class: "btn ghost", onclick: () => router.navigate("hangar") }, "Open hangar"),
           h("button", { class: "btn ghost", onclick: () => router.navigate("briefing") }, "More missions"),
+          h("button", { class: "btn ghost", onclick: () => router.navigate("leaderboard") }, "View leaderboard"),
         ),
   );
   return gameShell("briefing", body);
+}
+
+/** The score breakdown, plus (single-player only) the form that sends it to the global leaderboard. */
+function scorePanel(rep: FlightReport, remote: boolean, sandbox: boolean): HTMLElement | null {
+  const o = rep.outcome;
+  const sc = o.score;
+  const sandboxed = o.plan?.sandbox ?? sandbox;
+  if (!sc) {
+    return !remote && sandboxed ? h("div", { class: "panel hud" }, h("h3", null, "Mission score"), h("p", { class: "muted" }, "Sandbox missions are not ranked."), h("button", { class: "btn small", disabled: true }, "Submit to the global leaderboard")) : null;
+  }
+  const difficulty = o.plan?.difficulty ?? store.get().game?.difficulty ?? "engineer";
+  const def = DIFFICULTY_BY_ID[difficulty];
+  const raw = sc.parts.reduce((s, p) => s + p.points, 0);
+
+  const head = h(
+    "div",
+    { class: "sc-head" },
+    h("span", { class: "sc-total" }, String(sc.total)),
+    h("span", { class: "sc-rank" }, sc.rank),
+    h("span", { class: "muted small mono" }, `${raw} points × ${def.scoreMult.toFixed(1)} (${def.label} difficulty)`),
+  );
+  const parts = h(
+    "div",
+    { class: "sc-parts" },
+    ...sc.parts.map((p) => h("div", { class: "sc-part" }, h("span", null, p.label), h("div", { class: "bar" }, h("span", { style: { width: `${Math.round((p.points / p.max) * 100)}%` } })), h("span", { class: "pts" }, `${p.points}/${p.max}`))),
+  );
+
+  let footer: HTMLElement;
+  if (remote) {
+    footer = h("p", { class: "muted small" }, "The server computed this result, so it is on the global leaderboard as a verified team score.");
+  } else {
+    const key = `${rep.seed}:${rep.missionId}:${rep.craftName}`;
+    const msg = h("span", { class: "sc-msg small", role: "status" });
+    const input = h("input", { type: "text", maxlength: "20", value: store.get().settings.playerName, placeholder: "Your name", "aria-label": "Name for the leaderboard" });
+    const button = h("button", { class: "btn small" }, "Submit to the global leaderboard");
+    const done = () => {
+      button.disabled = true;
+      input.disabled = true;
+    };
+    if (submitted.has(key)) {
+      done();
+      msg.className = "sc-msg small ok";
+      msg.textContent = "Submitted. See it on the leaderboard.";
+    }
+    input.addEventListener("change", () => store.updateSettings({ playerName: input.value.trim().slice(0, 20) }));
+    button.addEventListener("click", async () => {
+      const name = input.value.trim();
+      if (!name) {
+        msg.className = "sc-msg small bad";
+        msg.textContent = "Enter a name first.";
+        return;
+      }
+      store.updateSettings({ playerName: name.slice(0, 20) });
+      button.disabled = true;
+      msg.className = "sc-msg small muted";
+      msg.textContent = "Sending… a sleeping server can take up to a minute to answer.";
+      const ok = await submitScore({ name, missionId: rep.missionId, craftName: rep.craftName, score: sc.total, result: o.result, difficulty });
+      if (ok) {
+        submitted.add(key);
+        done();
+        msg.className = "sc-msg small ok";
+        msg.textContent = "Submitted. Your score is on the leaderboard.";
+      } else {
+        button.disabled = false;
+        msg.className = "sc-msg small bad";
+        msg.textContent = "The leaderboard server isn't answering right now. Your score is saved on this device; you can try again in a minute.";
+      }
+    });
+    footer = h("div", { class: "sc-submit" }, h("label", { class: "sc-name" }, h("span", { class: "muted small" }, "Name"), input), button, msg);
+  }
+  return h("div", { class: "panel hud" }, h("h3", null, "Mission score"), head, parts, footer);
 }
 
 function kv(k: string, v: string): HTMLElement {

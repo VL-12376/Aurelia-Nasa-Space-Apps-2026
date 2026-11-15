@@ -2,21 +2,39 @@
  * Live space data from NASA/JPL, fetched by the game server and cached.
  *
  * JPL's Horizons and Close-Approach services do not allow browsers to call them directly, so the
- * server makes the request and the game reads it from here. Only these two fixed queries are made;
- * the browser cannot choose what the server fetches.
+ * server makes the request and the game reads it from here. Only these fixed, whitelisted queries
+ * are made (Moon and Mars from Horizons, close approaches, four DONKI space weather lists); the
+ * browser cannot choose what the server fetches.
  */
+
+import { buildWeather, type SpaceWeather } from "../src/data/weather";
 
 const HORIZONS = "https://ssd.jpl.nasa.gov/api/horizons.api";
 const CAD = "https://ssd-api.jpl.nasa.gov/cad.api";
+const DONKI_API = "https://api.nasa.gov/DONKI";
+/** DONKI's own server. Used when the api.nasa.gov gateway does not answer, and it needs no key. */
+const DONKI_CCMC = "https://ccmc.gsfc.nasa.gov/DONKI-API/get";
+const DONKI_KINDS = ["FLR", "CME", "SEP", "GST"] as const;
+type DonkiKind = (typeof DONKI_KINDS)[number];
 const SPEED_OF_LIGHT_KMS = 299_792.458;
 const AU_KM = 149_597_870.7;
 const LUNAR_DISTANCE_KM = 384_400;
 const CACHE_MS = 30 * 60_000;
+/** Shorter cache while a source is missing, so a temporary failure does not hide data for half an hour. */
+const RETRY_MS = 10 * 60_000;
 
 export interface MoonNow {
   /** Centre-to-centre distance from Earth, km. */
   distanceKm: number;
   speedKms: number;
+  /** One-way radio travel time, seconds. */
+  lightTimeS: number;
+  epoch: string;
+}
+
+export interface MarsNow {
+  /** Centre-to-centre distance from Earth, km. */
+  distanceKm: number;
   /** One-way radio travel time, seconds. */
   lightTimeS: number;
   epoch: string;
@@ -37,7 +55,9 @@ export interface Approach {
 export interface SpaceNow {
   fetchedAt: string;
   moon: MoonNow | null;
+  mars: MarsNow | null;
   approaches: Approach[];
+  weather: SpaceWeather | null;
   sources: string[];
 }
 
@@ -62,6 +82,13 @@ export function moonFromHorizons(result: string): MoonNow | null {
   return { distanceKm, speedKms: Math.hypot(...s.vel), lightTimeS: distanceKm / SPEED_OF_LIGHT_KMS, epoch: s.epoch };
 }
 
+export function marsFromHorizons(result: string): MarsNow | null {
+  const s = parseHorizons(result);
+  if (!s) return null;
+  const distanceKm = Math.hypot(...s.pos);
+  return { distanceKm, lightTimeS: distanceKm / SPEED_OF_LIGHT_KMS, epoch: s.epoch };
+}
+
 interface CadJson {
   fields?: string[];
   data?: string[][];
@@ -82,6 +109,7 @@ export function approachesFromCad(json: CadJson, limit = 8): Approach[] {
 }
 
 const hz = (d: Date) => d.toISOString().slice(0, 16).replace("T", " ");
+const ymd = (d: Date) => d.toISOString().slice(0, 10);
 
 async function getJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { signal: AbortSignal.timeout(20_000), headers: { "user-agent": "AURELIA-game/1.0 (educational)" } });
@@ -89,30 +117,71 @@ async function getJson<T>(url: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-let cache: { at: number; data: SpaceNow } | null = null;
+/** A fixed Horizons vector query from the centre of the Earth, for one body ('301' Moon, '499' Mars). */
+function horizonsUrl(command: string, now: Date): string {
+  return `${HORIZONS}?format=json&COMMAND=%27${command}%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27500@399%27&START_TIME=%27${encodeURIComponent(hz(now))}%27&STOP_TIME=%27${encodeURIComponent(hz(new Date(now.getTime() + 120_000)))}%27&STEP_SIZE=%271%20min%27&VEC_TABLE=%272%27&OUT_UNITS=%27KM-S%27`;
+}
+
+/**
+ * One DONKI list for the last 30 days, or null if no server answered with a list.
+ * Uses NASA_API_KEY on api.nasa.gov; the shared DEMO_KEY allows only about 30 requests an hour per IP
+ * address, which the 30 minute cache below stays well inside. If the gateway fails (it currently
+ * returns 404 for flares), DONKI's own server is asked instead.
+ */
+async function donki(kind: DonkiKind, now: Date): Promise<unknown | null> {
+  const range = `startDate=${ymd(new Date(now.getTime() - 30 * 86_400_000))}&endDate=${ymd(now)}`;
+  const key = process.env.NASA_API_KEY || "DEMO_KEY";
+  for (const url of [`${DONKI_API}/${kind}?${range}&api_key=${encodeURIComponent(key)}`, `${DONKI_CCMC}/${kind}?${range}`]) {
+    try {
+      const json = await getJson<unknown>(url);
+      if (Array.isArray(json)) return json;
+    } catch {
+      /* try the next server */
+    }
+  }
+  return null;
+}
+
+let cache: { at: number; ttl: number; data: SpaceNow } | null = null;
 let inflight: Promise<SpaceNow> | null = null;
 
 async function build(): Promise<SpaceNow> {
   const now = new Date();
-  const horizons = `${HORIZONS}?format=json&COMMAND=%27301%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27500@399%27&START_TIME=%27${encodeURIComponent(hz(now))}%27&STOP_TIME=%27${encodeURIComponent(hz(new Date(now.getTime() + 120_000)))}%27&STEP_SIZE=%271%20min%27&VEC_TABLE=%272%27&OUT_UNITS=%27KM-S%27`;
   const cad = `${CAD}?dist-max=0.05&date-min=now&date-max=%2B45&sort=date&limit=8`;
-  const [moonRes, cadRes] = await Promise.allSettled([getJson<{ result: string }>(horizons), getJson<CadJson>(cad)]);
+  const [moonRes, marsRes, cadRes, flr, cme, sep, gst] = await Promise.allSettled([
+    getJson<{ result: string }>(horizonsUrl("301", now)),
+    getJson<{ result: string }>(horizonsUrl("499", now)),
+    getJson<CadJson>(cad),
+    ...DONKI_KINDS.map((k) => donki(k, now)),
+  ]);
+  const raw = (r: PromiseSettledResult<unknown>) => (r.status === "fulfilled" ? (r.value ?? null) : null);
   const data: SpaceNow = {
     fetchedAt: now.toISOString(),
     moon: moonRes.status === "fulfilled" ? moonFromHorizons(moonRes.value.result) : null,
+    mars: marsRes.status === "fulfilled" ? marsFromHorizons(marsRes.value.result) : null,
     approaches: cadRes.status === "fulfilled" ? approachesFromCad(cadRes.value) : [],
-    sources: ["NASA/JPL Horizons System", "NASA/JPL SBDB Close-Approach Data API"],
+    weather: buildWeather({ flr: raw(flr), cme: raw(cme), sep: raw(sep), gst: raw(gst) }),
+    sources: [],
   };
-  if (!data.moon && !data.approaches.length) throw new Error("No data");
+  if (data.moon || data.mars) data.sources.push("NASA/JPL Horizons System");
+  if (data.approaches.length) data.sources.push("NASA/JPL SBDB Close-Approach Data API");
+  if (data.weather) data.sources.push("NASA DONKI space weather database (CCMC)");
+  if (!data.sources.length) throw new Error("No data");
   return data;
 }
 
-/** Latest data, refreshed at most every 30 minutes. If JPL is down, the last good copy is served. */
+/** The last data fetched, if any, without waiting for a refresh: used to colour a flight with real space weather. */
+export function peekSpaceNow(): SpaceNow | null {
+  return cache?.data ?? null;
+}
+
+/** Latest data, refreshed at most every 30 minutes (10 while a source is missing). If NASA is down, the last good copy is served. */
 export async function spaceNow(): Promise<SpaceNow> {
-  if (cache && Date.now() - cache.at < CACHE_MS) return cache.data;
+  if (cache && Date.now() - cache.at < cache.ttl) return cache.data;
   inflight ??= build()
     .then((data) => {
-      cache = { at: Date.now(), data };
+      const complete = data.moon && data.mars && data.weather && data.weather.flareCount30d !== null && data.weather.cmeCount30d !== null && data.weather.sepCount30d !== null;
+      cache = { at: Date.now(), ttl: complete ? CACHE_MS : RETRY_MS, data };
       return data;
     })
     .finally(() => {

@@ -2,10 +2,16 @@ import { h, toast } from "../../core/dom";
 import { router } from "../../core/router";
 import { store } from "../../core/store";
 import { formatUsd, trySpend } from "../../budget/budget";
-import { Flight, hashSeed, launchBlockers, preflight } from "../../missions/flight";
+import { Flight, hashSeed, launchBlockers } from "../../missions/flight";
 import { MISSIONS, type MissionDef } from "../../missions/missions";
 import { REAL_PARALLELS } from "../../data/real";
+import { realImageFigure } from "../realImage";
 import { profileFor, type Phase } from "../../missions/profiles";
+import { capacityCheck, LAUNCHERS, OWN_ROCKET } from "../../launch/vehicles";
+import { launchGate } from "../../missions/launchGate";
+import { orbitsFor, planExtraDv } from "../../missions/orbits";
+import { phasesFor, resolvePlan, type MissionPlan } from "../../missions/plan";
+import { currentSpaceWeather } from "../../net/weatherCache";
 import { PlanetPortrait } from "../../scene/planetPortrait";
 import type { BodyId } from "../../science/bodies";
 import { analyse, type Design } from "../../spacecraft/design";
@@ -126,10 +132,14 @@ export function missionBoard(): HTMLElement {
     const craft = fleet.find((c) => c.id === session.selectedCraftId) ?? fleet[0] ?? null;
     if (craft) session.selectedCraftId = craft.id;
     const design: Design | null = craft ? { name: craft.name, parts: craft.parts } : null;
-    const stats = design ? analyse(design) : null;
-    const checks = design && stats ? preflight(stats, design, m, g.funds) : [];
+    const plan = remote ? undefined : g.plans?.[m.id];
+    const gate = design ? launchGate(design, m, plan, g.funds, g.sandbox) : null;
+    const stats = gate?.stats ?? null;
+    const checks = gate?.checks ?? [];
     const blockers = launchBlockers(checks);
     const canLaunch = !!design && blockers.length === 0 && !locked;
+    const resolved = resolvePlan(m, plan);
+    const effCost = m.costUsd + resolved.launchCostUsd;
 
     const craftSelect = fleet.length
       ? h(
@@ -169,6 +179,7 @@ export function missionBoard(): HTMLElement {
               h("h3", null, "In the real world"),
               h("strong", null, `${REAL_PARALLELS[m.id].name} (${REAL_PARALLELS[m.id].year})`),
               h("p", null, REAL_PARALLELS[m.id].text),
+              realImageFigure(REAL_PARALLELS[m.id].imageQuery ?? REAL_PARALLELS[m.id].mission),
               h("ul", { class: "list" }, ...REAL_PARALLELS[m.id].facts.map(([k, v]) => h("li", null, h("span", { class: "muted" }, k), h("span", null, v)))),
               h("p", { class: "muted small" }, `Flew on ${REAL_PARALLELS[m.id].vehicle}. Details from public NASA records. AURELIA's version is a simplified teaching model.`),
             )
@@ -182,7 +193,7 @@ export function missionBoard(): HTMLElement {
         h(
           "ol",
           { class: "plan" },
-          ...phases.map((p) =>
+          ...phasesFor(m, resolved).map((p) =>
             h(
               "li",
               null,
@@ -190,8 +201,9 @@ export function missionBoard(): HTMLElement {
             ),
           ),
         ),
-        h("div", { class: "kv" }, h("span", { class: "k" }, "Total delta-v"), h("span", { class: "v mono" }, `${burnTotal.toLocaleString("en-US")} m/s`)),
+        h("div", { class: "kv" }, h("span", { class: "k" }, "Total delta-v"), h("span", { class: "v mono" }, `${(burnTotal + resolved.extraDv).toLocaleString("en-US")} m/s`)),
       ),
+      remote ? h("div", { class: "panel hud" }, h("h3", null, "Orbit and launch vehicle"), h("p", { class: "muted small" }, "Team missions fly the default orbit on the rocket your team builds. Orbit and launch-vehicle choices are available in single-player and sandbox.")) : planPanel(m, design ? analyse(design).payloadMass : null, plan),
       h(
         "div",
         { class: "panel hud" },
@@ -210,16 +222,70 @@ export function missionBoard(): HTMLElement {
       h(
         "div",
         { class: "mb-launch" },
-        h("div", { class: "mono small" }, locked ? `Finish Season ${g.season} first to unlock this mission.` : `Funds ${formatUsd(g.funds)} · this mission costs ${formatUsd(m.costUsd)} to operate`),
+        h("div", { class: "mono small" }, locked ? `Finish Season ${g.season} first to unlock this mission.` : `Funds ${g.sandbox ? "unlimited (sandbox)" : formatUsd(g.funds)} · this mission costs ${formatUsd(effCost)} to operate${resolved.launcher ? ` (including ${resolved.launcher.name} at ${formatUsd(resolved.launchCostUsd)})` : ""}`),
         h("button", { class: "btn", disabled: !canLaunch || !isController(), title: !isController() ? "Only the Mission Controller launches" : canLaunch ? "Start the mission" : locked ? "This season is locked" : blockers[0]?.label ?? "Build a spacecraft first", onclick: () => launch(m, craft!.id, design!) }, isController() ? "Launch mission" : "Waiting for the Mission Controller"),
       ),
     );
   }
 
+  function setPlan(m: MissionDef, patch: { orbit?: string; launcher?: string }): void {
+    store.updateGame((gg) => {
+      gg.plans = { ...(gg.plans ?? {}), [m.id]: { ...(gg.plans?.[m.id] ?? {}), ...patch } };
+    });
+    renderDetail();
+  }
+
+  /** Orbit and launch-vehicle choices for the selected mission, with the trade-offs spelled out. */
+  function planPanel(m: MissionDef, payloadKg: number | null, plan: MissionPlan | undefined): HTMLElement {
+    const orbits = orbitsFor(m);
+    const r = resolvePlan(m, plan);
+    const dvText = (x: number) => (x === 0 ? "reference orbit" : `${x > 0 ? "+" : "−"}${Math.abs(x).toLocaleString("en-US")} m/s`);
+    const orbitCards = orbits.map((o) =>
+      h(
+        "button",
+        { class: `plan-opt${o.id === r.orbit.id ? " sel" : ""}`, disabled: orbits.length === 1, "aria-pressed": String(o.id === r.orbit.id), onclick: () => setPlan(m, { orbit: o.id }) },
+        h("strong", null, o.label),
+        h("span", { class: "muted small" }, o.blurb),
+        orbits.length > 1 ? h("span", { class: "mono small" }, `${dvText(planExtraDv(m, o))} · ground contact about ${Math.round(o.contactFraction * 1440)} min/day · up to ${Math.round(o.eclipseHours * 60)} min in shadow`) : null,
+        orbits.length > 1 ? h("span", { class: "muted small" }, `Trade-off: ${o.tradeoff}`) : null,
+      ),
+    );
+    const ownCard = h(
+      "button",
+      { class: `plan-opt${!r.launcher ? " sel" : ""}`, "aria-pressed": String(!r.launcher), onclick: () => setPlan(m, { launcher: OWN_ROCKET }) },
+      h("strong", null, "Your own rocket"),
+      h("span", { class: "muted small" }, "Fly the stages you designed in the Hangar. Already paid for when you built it."),
+    );
+    const vehicleCards = LAUNCHERS.map((v) => {
+      const cap = payloadKg !== null ? capacityCheck(v, m, r.orbit, payloadKg) : null;
+      return h(
+        "button",
+        { class: `plan-opt${r.launcher?.id === v.id ? " sel" : ""}`, "aria-pressed": String(r.launcher?.id === v.id), onclick: () => setPlan(m, { launcher: v.id }) },
+        h("strong", null, v.name, cap ? h("span", { class: `plan-badge ${cap.ok ? "ok" : "bad"}` }, cap.ok ? "FITS" : cap.capacityKg === null ? "NOT RATED" : "TOO SMALL") : null),
+        h("span", { class: "muted small" }, `${v.operator}, first flight ${v.firstFlight}. ${v.blurb}`),
+        h("span", { class: "mono small" }, `${v.capacityNote} ${v.priceNote}`),
+        cap ? h("span", { class: cap.ok ? "small" : "bad small" }, cap.detail) : null,
+        h("span", { class: "muted small" }, `Source: ${v.source}. Stage figures are simplified.`),
+      );
+    });
+    return h(
+      "div",
+      { class: "panel hud" },
+      h("h3", null, "Orbit and launch vehicle"),
+      h("p", { class: "muted small" }, "There is rarely one perfect answer. A higher orbit costs more delta-v, a bigger rocket costs more money, and each changes how much data you can send home and how long the mission lasts."),
+      h("h4", null, "Orbit"),
+      h("div", { class: "plan-opts" }, ...orbitCards),
+      h("h4", null, "Launch vehicle"),
+      h("div", { class: "plan-opts" }, ownCard, ...vehicleCards),
+      h("p", { class: "muted small" }, "Catalogue vehicles use published figures from launch-service guides and NASA, simplified to a few stages. Only your spacecraft section is used on a catalogue vehicle."),
+    );
+  }
+
   function launch(m: MissionDef, craftId: string, design: Design): void {
     const g = game();
-    const stats = analyse(design);
-    if (launchBlockers(preflight(stats, design, m, g.funds)).length) return toast("The launch checks are not all met.");
+    const plan = remote ? undefined : g.plans?.[m.id];
+    const gate = launchGate(design, m, plan, g.funds, g.sandbox);
+    if (launchBlockers(gate.checks).length) return toast("The launch checks are not all met.");
     if (remote) {
       mp.send({ t: "mission", id: m.id });
       mp.send({ t: "launch", craftId });
@@ -227,11 +293,11 @@ export function missionBoard(): HTMLElement {
     }
     const seed = hashSeed(`${craftId}:${m.id}:${g.flights}`);
     store.updateGame((gg) => {
-      gg.funds = trySpend(gg.funds, gg.allocation, "operations", m.costUsd).funds;
+      gg.funds = trySpend(gg.funds, gg.allocation, "operations", gate.mission.costUsd).funds;
       gg.fleet = gg.fleet.filter((c) => c.id !== craftId);
       gg.flights += 1;
     });
-    session.flight = new Flight(design, m, seed);
+    session.flight = new Flight(design, m, seed, { plan, difficulty: g.difficulty, sandbox: g.sandbox, ...currentSpaceWeather() });
     session.flightMissionId = m.id;
     session.flightSeed = seed;
     session.flightApplied = false;
